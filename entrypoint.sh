@@ -235,7 +235,11 @@ test_write() {
         return 1
     fi
 
-    if ! run_as_target_user sh -c 'echo 0123456789_TEST > "$1"' _ "$test_file"; then
+    # This is a probe: a failure here is expected (e.g. a fresh root-owned bind
+    # mount) and is recovered by the caller via change_ownership + re-probe. Hide
+    # the shell's "Permission denied"/"Read-only file system" stderr so a handled
+    # probe miss doesn't masquerade as a real boot failure in the logs.
+    if ! run_as_target_user sh -c 'echo 0123456789_TEST 2>/dev/null > "$1"' _ "$test_file"; then
         echo "Failed to write test file in $folder as $USERNAME"
         return 1
     fi
@@ -448,6 +452,12 @@ else
     if [ $config_ok -ne 0 ]; then
         fail_unwritable_config_dir "$CONFIG_PATH"
     fi
+
+    # The ingest/destination library (default /books) is user data and may be a
+    # bind mount owned by another uid; downloads fail with "Destination not
+    # writable" if the runtime user can't write there. Fix the top-level dir only
+    # (root mode) so we don't recursively chown a potentially huge library.
+    make_writable "${INGEST_DIR:-/books}" root
 fi
 
 # Always run Gunicorn (even when DEBUG=true) to ensure Socket.IO WebSocket
