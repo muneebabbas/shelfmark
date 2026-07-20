@@ -1184,6 +1184,7 @@ class TestAdminDeliveryPreferences:
             "BOOKLORE_LIBRARY_ID",
             "BOOKLORE_PATH_ID",
             "EMAIL_RECIPIENT",
+            "KINDLE_EMAIL",
             "DESTINATION_AUDIOBOOK",
             "DOWNLOAD_TO_BROWSER_CONTENT_TYPES",
         ]

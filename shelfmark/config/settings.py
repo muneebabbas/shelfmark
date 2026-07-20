@@ -1242,6 +1242,23 @@ def download_settings() -> list[SettingsField]:
             callback=check_email_connection,
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "email"},
         ),
+        # === SEND-TO-KINDLE ===
+        # Distinct from BOOKS_OUTPUT_MODE=email (the download-output email).
+        # Send-to-Kindle is a per-user click action from the library; this
+        # address is exclusively the Kindle "Send-to-Kindle" contact, not a
+        # fallback for EMAIL_RECIPIENT. See ADR 0002 and ticket #04.
+        HeadingField(
+            key="send_to_kindle_heading",
+            title="Send to Kindle",
+            description="Per-user Kindle email address for one-click Send-to-Kindle from the library.",
+        ),
+        TextField(
+            key="KINDLE_EMAIL",
+            label="Kindle Email",
+            description="Send-to-Kindle email address for your device (e.g., reader@kindle.com). Distinct from the download-output email recipient.",
+            placeholder="reader@kindle.com",
+            user_overridable=True,
+        ),
         # === AUDIOBOOKS SECTION ===
         # Universal mode only
         HeadingField(

@@ -50,6 +50,8 @@ from shelfmark.core.config import config as app_config
 from shelfmark.core.cwa_user_sync import upsert_cwa_user
 from shelfmark.core.download_history_service import DownloadHistoryService
 from shelfmark.core.external_user_linking import upsert_external_user
+from shelfmark.core.library_routes import register_library_routes
+from shelfmark.core.library_service import LibraryService
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import TERMINAL_QUEUE_STATUSES, QueueStatus, SearchFilters
 from shelfmark.core.notifications import (
@@ -174,11 +176,13 @@ _user_db_path = str(Path(os.environ.get("CONFIG_DIR", "/config")) / "users.db")
 user_db: UserDB | None = None
 download_history_service: DownloadHistoryService | None = None
 activity_view_state_service: ActivityViewStateService | None = None
+library_service: LibraryService | None = None
 try:
     user_db = UserDB(_user_db_path)
     user_db.initialize()
     download_history_service = DownloadHistoryService(_user_db_path)
     activity_view_state_service = ActivityViewStateService(_user_db_path)
+    library_service = LibraryService(_user_db_path)
     import_module("shelfmark.config.users_settings")
     from shelfmark.core.admin_routes import register_admin_routes
     from shelfmark.core.oidc_routes import register_oidc_routes
@@ -196,6 +200,7 @@ except (sqlite3.OperationalError, OSError) as e:
     user_db = None
     download_history_service = None
     activity_view_state_service = None
+    library_service = None
 
 # Start download coordinator
 backend.start()
@@ -513,6 +518,47 @@ def _queue_status_for_routes(user_id: int | None = None) -> dict[str, dict[str, 
     return backend.queue_status(user_id=user_id)
 
 
+def _resolve_metadata_book_for_library(
+    provider_name: str, provider_book_id: str
+) -> dict[str, Any] | None:
+    """Fetch book metadata from a provider for Add-to-Library (#04 sub-decision 13).
+
+    Returns the BookMetadata as a dict, with the cover URL transformed to the
+    local proxy form when caching is enabled — mirrors /api/metadata/book.
+    Returns None when the provider is unavailable or the book isn't found,
+    which the library route translates into a 503. Lookup is synchronous so
+    the ``books`` row is fully populated before the user's library link is
+    inserted (ADR 0001: snapshot-at-add is final).
+    """
+    try:
+        from dataclasses import asdict
+
+        prov = _resolve_metadata_provider(provider_name)
+        book = prov.get_book(provider_book_id)
+        if not book:
+            return None
+        book_dict = asdict(book)
+        from shelfmark.core.utils import transform_cover_url
+
+        if book_dict.get("cover_url"):
+            cache_id = f"{provider_name}_{provider_book_id}"
+            book_dict["cover_url"] = transform_cover_url(book_dict["cover_url"], cache_id)
+
+        authors = book_dict.get("authors") or []
+        primary_author = authors[0] if isinstance(authors, list) and authors else None
+        book_dict["author"] = primary_author
+        raw_payload = dict(book_dict)
+        raw_payload.pop("author", None)
+        book_dict["metadata_json"] = raw_payload
+    except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error) as exc:
+        logger.warning(
+            "Library metadata fetch for %s/%s failed: %s", provider_name, provider_book_id, exc
+        )
+        return None
+    else:
+        return book_dict
+
+
 if user_db is not None:
     try:
         from shelfmark.core.activity_routes import register_activity_routes
@@ -536,6 +582,15 @@ if user_db is not None:
                 sync_request_delivery_states=sync_delivery_states_from_queue_status,
                 emit_request_updates=_emit_request_updates,
                 ws_manager=ws_manager,
+            )
+        if library_service is not None and download_history_service is not None:
+            register_library_routes(
+                app,
+                user_db,
+                library_service=library_service,
+                download_history_service=download_history_service,
+                resolve_auth_mode=_resolve_auth_mode_for_routes,
+                resolve_metadata_book=_resolve_metadata_book_for_library,
             )
     except _IMPORT_OPERATIONAL_ERRORS as e:
         logger.warning("Failed to register request routes: %s", e)
