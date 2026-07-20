@@ -1,6 +1,6 @@
 Type: task
 Status: open
-Blocked by: 06, 09
+Blocked by: 06, 09, 13
 
 # Search/Release-list integration: dedup indicator + add-to-library button
 
