@@ -299,6 +299,80 @@ def send_email_message(smtp_config: EmailSmtpConfig, message: EmailMessage) -> N
                 smtp.close()
 
 
+def _mask_recipient(recipient: str) -> str:
+    """Mask an email recipient for API responses, mirroring _post_process_email's label use.
+
+    Reuses the same shape as ``output_args["label"]`` masking: if the recipient
+    looks like an email, show ``l***@domain``; otherwise show the raw string.
+    This is the MVP masker — no custom per-user masking logic (#04 sub-decision 16).
+    """
+    cleaned = (recipient or "").strip()
+    if not cleaned:
+        return ""
+    local, _, domain = cleaned.partition("@")
+    if not domain or not local:
+        return cleaned
+    masked_local = local[0] + "***" if local else "***"
+    return f"{masked_local}@{domain}"
+
+
+def send_file_to_email(
+    file_path: Path,
+    recipient: str,
+    *,
+    label: str | None = None,
+    subject: str | None = None,
+) -> str:
+    """Send a single file as an email attachment to ``recipient``.
+
+    Reuses ``build_email_smtp_config`` + ``send_email_message`` against the
+    instance's SMTP settings (#04 sub-decision 17). No synthetic DownloadTask;
+    the message is composed inline. Raises ``EmailOutputError`` on SMTP/config
+    failure — library routes translate this into a 500 via _OPERATIONAL_ERRORS.
+
+    Args:
+        file_path: File to attach. Must exist.
+        recipient: Email address to send to.
+        label: Optional display label for logging/masking; falls back to recipient.
+        subject: Optional subject line; defaults to the file name.
+
+    Returns:
+        The masked recipient string (for the API success response).
+
+    """
+    normalized_recipient = (recipient or "").strip()
+    if not normalized_recipient:
+        msg = "No email recipient configured"
+        raise EmailOutputError(msg)
+
+    if not file_path.exists():
+        msg = f"File not found: {file_path}"
+        raise EmailOutputError(msg)
+
+    smtp_config = build_email_smtp_config(_get_email_settings())
+
+    message = EmailMessage()
+    message["From"] = smtp_config.from_addr
+    message["To"] = normalized_recipient
+    message["Subject"] = subject or file_path.name
+    message["Date"] = formatdate(localtime=True)
+    message["Message-ID"] = make_msgid(domain=_msgid_domain(smtp_config.from_addr))
+    message.set_content("")
+
+    data = file_path.read_bytes()
+    content_type, encoding = mimetypes.guess_type(file_path.name)
+    if content_type is None or encoding is not None:
+        content_type = "application/octet-stream"
+    main_type, sub_type = content_type.split("/", 1)
+    message.add_attachment(data, maintype=main_type, subtype=sub_type, filename=file_path.name)
+
+    send_email_message(smtp_config, message)
+
+    display_label = label or normalized_recipient
+    logger.info("Send-to-Kindle: delivered file=%s to=%s", file_path.name, display_label)
+    return _mask_recipient(normalized_recipient)
+
+
 def _supports_email(task: DownloadTask) -> bool:
     return not check_audiobook(task.content_type)
 

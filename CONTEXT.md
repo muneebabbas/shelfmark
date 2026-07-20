@@ -1,0 +1,29 @@
+# Context
+
+A glossary of the canonical terms in the Shelfmark fork's library effort. Devoid of implementation detail — for schema, see the tickets under `.scratch/library/`; for decisions, see `docs/adr/`.
+
+## Book
+
+A **Book** is a metadata-provider-backed work — an instance of "this work exists in provider X with provider id Y". A Book is **not** a release and **not** a file on disk; it is the catalog identity. The `(metadata_provider, provider_book_id)` pair is the natural key (both NOT NULL); the same work added via two providers lives as two Book rows (cross-provider merge is out of scope for the library effort).
+
+A Book row is a **denormalized snapshot** of the provider's `BookMetadata` at add-time: title, author (primary), subtitle, publish_year, isbn_13, cover_url, series_name, series_position, language are copied into columns. The row is self-sufficient — reading book detail or the bookshelf never calls the provider. The complete raw provider payload is preserved in `metadata_json` for fields not promoted to columns (including the full ordered `authors` list). Staleness is accepted; refresh is a deferred explicit action, not a read-time behaviour. `books.updated_at` bumps on metadata refresh only — cover re-fetches (if they ever exist) don't touch it.
+
+## Library
+
+A user's **Library** is the set of Book rows that user has chosen to track — a per-user link onto Books (`user_library`, PK `(user_id, book_id)`, both FKs `ON DELETE CASCADE`). Library membership is orthogonal to files on disk: a Book can be in a user's Library with zero files anywhere (wishlist semantics). Removing a Book from a Library is a hard `DELETE` of the link row — no `removed_at`, no tombstone. Future "restore removed" UX is a fresh ticket that would introduce soft-delete then.
+
+## File / Download
+
+A **File** is a concrete downloaded artifact tracked by `download_history` — a `(source, task_id)` pair with a `download_path` and a `format`. Files are global (per-instance, not per-user); the Library merely surfaces them. Adding to the Library never creates a File; downloading never creates a Library entry.
+
+`download_history.book_id` (nullable, `ON DELETE SET NULL`) links a File to a Book. Legacy / direct-mode / un-lined rows have `book_id IS NULL` and are invisible to library queries. Backfill strategy for existing rows is deferred to the implementation ticket.
+
+A user's library surfaces a File via the **`user_downloads(user_id, history_id)` link table** — the load-bearing column for file visibility in a user's library. Multiple users can link the same `download_history` row. Unlinking a release from a user's library is a hard `DELETE` of the link; the File and its `download_history` row are untouched. Library file serving gates on `user_library` Book-membership (any user with the Book in their library can download any of its files), not on `download_history.user_id`. The `download_history.user_id` column stays as an audit field for "the auth identity who triggered the download" — not exposed via the library API.
+
+## Orphan
+
+An **Orphan** is a `download_history` row (a File) with zero `user_downloads` entries across all users AND not currently in-flight (`final_status != 'active'`). Orphans are admin-cleanup candidates; the cleanup mechanism (schedule, retention window, what deletes — file only vs file + row) is deferred and parked on the map's Not yet specified.
+
+## Author
+
+The **primary author** is a denormalized `books.author TEXT` column (one string). The full ordered author list lives in `metadata_json.authors`. There is **no `authors` table** — author identity is provider-specific (Hardcover numeric ids, Open Library `/authors/OL*` keys, Google Books none), so an instance-local author table would buy a join without buying cross-provider identity. A future authors table is parked in fog for the author-browse ticket to revisit if it demands an instance-local author route.
