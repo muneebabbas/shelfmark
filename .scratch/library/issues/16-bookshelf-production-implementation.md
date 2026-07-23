@@ -1,5 +1,5 @@
 Type: task
-Status: claimed
+Status: resolved
 Blocked by: 06, 07, 10
 
 # Implement the validated bookshelf UI
@@ -22,3 +22,7 @@ Production work includes:
 The activity sidebar must remain available on this route per #07. Do not add pagination, server-side structured filtering, or a new component dependency.
 
 Verification: `make checks` passes; the page renders against seeded/live library data; title/author search and each file-state filter work; card navigation and `Find this book` route correctly.
+
+## Answer
+
+Implemented on `feature/library-bookshelf` in commits `1516c00` and `1e8f46e`. `LibraryPage` renders the live unpaginated `GET /api/library/books` response as the validated responsive cover shelf, with cover fallbacks, compact global-format badges, client-side title/author search, and All / Has files / Needs files filters. It includes loading, empty, filter-empty, and retryable error states; cards navigate to detail, while file-less books use `?find=true` to open Find Releases, including when an in-flight release exists. Added typed list API response support and the `/library` route. `npm run build`, typecheck, formatting, and 120 frontend unit tests pass. `make checks` remains blocked by five pre-existing Oxlint errors in `useUsersFetch.ts` and `SelfSettingsModal.tsx`.
