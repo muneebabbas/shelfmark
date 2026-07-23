@@ -1,5 +1,5 @@
 Type: prototype
-Status: claimed
+Status: resolved
 Claimed by: wayfinder session 2026-07-23
 Blocked by: 04, 05, 07
 
@@ -60,3 +60,32 @@ Prototype React code on the feature branch, plus a written note in the resolutio
 - Loading & error states — referenced from #07's contract.
 - Activity sidebar accessibility on library routes — referenced from #07's contract.
 - Unlink mid-flight UX (above).
+
+## Answer
+
+The revised prototype is on `library/08-book-detail-prototype-reconciled` at
+`1c6a6cc` (`prototype(library:#08): group advanced releases`).
+
+The page has two levels:
+
+- **Available formats** is the default, common-case view. It displays one
+  concrete File per format: the newest completed File by `downloaded_at`, with
+  descending `history_id` as the deterministic tie-breaker. Each row shows
+  compact provenance (`latest from <source> · <date>`) and downloads that
+  selected File.
+- **Releases** is a collapsed advanced section. It groups the flat API
+  `files[]` payload by `task_id`, then shows source, completion date, and each
+  exact File. A user can download a specific File here to retry an earlier EPUB
+  or choose a particular release. Unlink appears once per group and explicitly
+  removes the entire release, matching #13's release-atomic API behaviour.
+
+Send-to-Kindle remains independent of which advanced File a user inspects: it
+uses #05's EPUB-first priority (or the inline format override) and sends the
+latest completed File for that chosen format. In-flight releases appear in the
+advanced section without an unlink control because their file links do not yet
+exist. The prior prototype's single-file-per-release rendering and obsolete
+mid-flight-unlink assumption were removed.
+
+`npm run typecheck` passes in the prototype worktree. This prototype is the
+validated UI contract; production-quality integration remains implementation
+work on a feature branch, not a change to `main` from this ticket.
