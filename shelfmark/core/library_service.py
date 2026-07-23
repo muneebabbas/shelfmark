@@ -366,6 +366,103 @@ class LibraryService:
         finally:
             conn.close()
 
+    def get_release_library_states(
+        self, *, task_ids: list[str], user_id: int | None
+    ) -> dict[str, dict[str, Any]]:
+        """Return on-disk and current-user library state for release task ids."""
+        normalized_task_ids = sorted({task_id.strip() for task_id in task_ids if task_id.strip()})
+        if not normalized_task_ids:
+            return {}
+        normalized_user_id = normalize_positive_int(user_id)
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                """
+                SELECT task_id, MAX(book_id) AS book_id
+                FROM download_history
+                WHERE task_id IN (SELECT value FROM json_each(?))
+                  AND final_status = ?
+                  AND download_path IS NOT NULL
+                GROUP BY task_id
+                """,
+                [json.dumps(normalized_task_ids), _COMPLETE_DOWNLOAD_STATUS],
+            ).fetchall()
+            states = {
+                task_id: {"is_on_disk": False, "book_id": None, "in_my_library": False}
+                for task_id in normalized_task_ids
+            }
+            for row in rows:
+                task_id = str(row["task_id"])
+                book_id = row["book_id"]
+                states[task_id]["is_on_disk"] = True
+                states[task_id]["book_id"] = int(book_id) if book_id is not None else None
+
+            book_ids = [
+                state["book_id"] for state in states.values() if state["book_id"] is not None
+            ]
+            if normalized_user_id is not None and book_ids:
+                memberships = conn.execute(
+                    """
+                    SELECT book_id FROM user_library
+                    WHERE user_id = ? AND book_id IN (SELECT value FROM json_each(?))
+                    """,
+                    [normalized_user_id, json.dumps(book_ids)],
+                ).fetchall()
+                member_book_ids = {int(row["book_id"]) for row in memberships}
+                for state in states.values():
+                    state["in_my_library"] = state["book_id"] in member_book_ids
+            return states
+        finally:
+            conn.close()
+
+    def get_metadata_library_states(
+        self, *, book_keys: list[tuple[str, str]], user_id: int | None
+    ) -> dict[tuple[str, str], dict[str, Any]]:
+        """Return library membership for provider-backed metadata search results."""
+        normalized_keys = sorted(
+            {
+                (provider.strip(), provider_book_id.strip())
+                for provider, provider_book_id in book_keys
+                if provider.strip() and provider_book_id.strip()
+            }
+        )
+        if not normalized_keys:
+            return {}
+        normalized_user_id = normalize_positive_int(user_id)
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                """
+                SELECT b.metadata_provider, b.provider_book_id, b.id AS book_id,
+                       ul.book_id IS NOT NULL AS in_my_library
+                FROM books b
+                LEFT JOIN user_library ul ON ul.book_id = b.id AND ul.user_id = ?
+                WHERE EXISTS (
+                    SELECT 1 FROM json_each(?) AS requested
+                    WHERE b.metadata_provider = json_extract(requested.value, '$.provider')
+                      AND b.provider_book_id = json_extract(requested.value, '$.provider_book_id')
+                )
+                """,
+                [
+                    normalized_user_id,
+                    json.dumps(
+                        [
+                            {"provider": provider, "provider_book_id": provider_book_id}
+                            for provider, provider_book_id in normalized_keys
+                        ]
+                    ),
+                ],
+            ).fetchall()
+            return {
+                (str(row["metadata_provider"]), str(row["provider_book_id"])): {
+                    "book_id": int(row["book_id"]),
+                    "in_my_library": bool(row["in_my_library"]),
+                }
+                for row in rows
+            }
+        finally:
+            conn.close()
+
     def get_download_history_row(self, history_id: int) -> dict[str, Any] | None:
         normalized_history_id = self._history_identity(history_id)
         conn = self._connect()

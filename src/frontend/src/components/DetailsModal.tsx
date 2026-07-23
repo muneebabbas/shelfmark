@@ -14,6 +14,7 @@ interface DetailsModalProps {
   book: Book | null;
   onClose: () => void;
   onDownload: (book: Book) => Promise<void>;
+  onAddToLibrary?: (book: Book) => Promise<void>;
   onFindDownloads?: (book: Book) => void; // For Universal mode
   onSearchSeries?: (seriesName: string, seriesId?: string) => void; // Callback to search for series
   buttonState: ButtonStateInfo;
@@ -40,6 +41,7 @@ export const DetailsModal = ({
   book,
   onClose,
   onDownload,
+  onAddToLibrary,
   onFindDownloads,
   onSearchSeries,
   buttonState,
@@ -47,6 +49,7 @@ export const DetailsModal = ({
   onShowToast,
 }: DetailsModalProps) => {
   const [isQueuing, setIsQueuing] = useState(false);
+  const [isAddingToLibrary, setIsAddingToLibrary] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
 
   const handleClose = useCallback(() => {
@@ -79,6 +82,17 @@ export const DetailsModal = ({
       }
       // Close on error
       setTimeout(handleClose, 300);
+    }
+  };
+
+  const handleAddToLibrary = async () => {
+    if (!onAddToLibrary) return;
+
+    setIsAddingToLibrary(true);
+    try {
+      await onAddToLibrary(book);
+    } catch {
+      setIsAddingToLibrary(false);
     }
   };
 
@@ -401,25 +415,62 @@ export const DetailsModal = ({
                     widthClassName="w-full sm:w-56"
                   />
                 )}
-                {/* Action button - mirrors search result action state/flow */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isMetadata) {
-                      onFindDownloads?.(book);
-                      return;
-                    }
-                    void handleDownload();
-                  }}
-                  disabled={
-                    isMetadata ? buttonState.state === 'blocked' : buttonState.state !== 'download'
-                  }
-                  className={`rounded-lg px-5 py-2 text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                    downloadButtonClassName
-                  }`}
-                >
-                  {isMetadata ? metadataActionText : buttonState.text}
-                </button>
+                {isMetadata ? (
+                  <>
+                    {onAddToLibrary && (
+                      <button
+                        type="button"
+                        onClick={() => void handleAddToLibrary()}
+                        disabled={isAddingToLibrary}
+                        className={`inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                          book.in_my_library
+                            ? 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600'
+                            : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                        }`}
+                      >
+                        {isAddingToLibrary && (
+                          <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                            />
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4Z"
+                            />
+                          </svg>
+                        )}
+                        {isAddingToLibrary
+                          ? 'Adding...'
+                          : book.in_my_library
+                            ? 'In Library'
+                            : 'Add +'}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => onFindDownloads?.(book)}
+                      disabled={buttonState.state === 'blocked'}
+                      className={`rounded-lg px-5 py-2 text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${downloadButtonClassName}`}
+                    >
+                      {metadataActionText}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void handleDownload()}
+                    disabled={buttonState.state !== 'download'}
+                    className={`rounded-lg px-5 py-2 text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${downloadButtonClassName}`}
+                  >
+                    {buttonState.text}
+                  </button>
+                )}
               </div>
             </div>
           </footer>

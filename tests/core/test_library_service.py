@@ -221,6 +221,72 @@ def test_in_flight_globally_detects_active_rows(library_service, db_path, user_d
     assert library_service.files_exist_globally(book["id"]) is False
 
 
+def test_release_library_states_are_batched_by_task_id(library_service, user_db):
+    alice = user_db.create_user(username="alice")
+    bob = user_db.create_user(username="bob")
+    book = _insert_book(library_service)
+    library_service.add_to_library(user_id=alice["id"], book_id=book["id"])
+
+    conn = user_db._connect()
+    try:
+        conn.execute(
+            """
+            INSERT INTO download_history (
+                task_id, user_id, source, title, origin, final_status, download_path, book_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "complete-task",
+                bob["id"],
+                "direct_download",
+                "Example",
+                "direct",
+                "complete",
+                "/tmp/example.epub",
+                book["id"],
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO download_history (
+                task_id, user_id, source, title, origin, final_status, download_path
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("missing-task", bob["id"], "direct_download", "Other", "direct", "complete", None),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    states = library_service.get_release_library_states(
+        task_ids=["complete-task", "missing-task"], user_id=alice["id"]
+    )
+
+    assert states["complete-task"] == {
+        "is_on_disk": True,
+        "book_id": book["id"],
+        "in_my_library": True,
+    }
+    assert states["missing-task"] == {
+        "is_on_disk": False,
+        "book_id": None,
+        "in_my_library": False,
+    }
+
+
+def test_metadata_library_states_match_provider_natural_keys(library_service, user_db):
+    alice = user_db.create_user(username="alice")
+    book = _insert_book(library_service, provider_book_id="provider-42")
+    library_service.add_to_library(user_id=alice["id"], book_id=book["id"])
+
+    states = library_service.get_metadata_library_states(
+        book_keys=[("hardcover", "provider-42"), ("hardcover", "not-added")],
+        user_id=alice["id"],
+    )
+
+    assert states == {("hardcover", "provider-42"): {"book_id": book["id"], "in_my_library": True}}
+
+
 def test_link_and_unlink_download_idempotent(library_service, user_db, db_path):
     alice = user_db.create_user(username="alice")
     book = _insert_book(library_service)

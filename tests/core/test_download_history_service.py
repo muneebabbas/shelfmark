@@ -51,6 +51,49 @@ def test_record_download_stores_utc_iso_timestamps():
         assert "+00:00" in row["terminal_at"]
 
 
+def test_finalize_download_files_preserves_library_book_id():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "users.db")
+        user_db = UserDB(db_path)
+        user_db.initialize()
+        service = DownloadHistoryService(db_path)
+
+        conn = user_db._connect()
+        try:
+            cursor = conn.execute(
+                "INSERT INTO books (metadata_provider, provider_book_id, title, metadata_json) VALUES (?, ?, ?, ?)",
+                ("hardcover", "42", "Example", "{}"),
+            )
+            conn.commit()
+            book_id = cursor.lastrowid
+        finally:
+            conn.close()
+
+        service.record_download(
+            task_id="task-library-book",
+            user_id=None,
+            username=None,
+            request_id=None,
+            source="direct_download",
+            source_display_name="Direct Download",
+            title="Example",
+            author=None,
+            file_format=None,
+            size=None,
+            preview=None,
+            content_type="ebook",
+            origin="direct",
+            book_id=book_id,
+        )
+        service.finalize_download_files(
+            task_id="task-library-book",
+            final_status="complete",
+            file_rows=[{"download_path": "/tmp/example.epub", "format": "epub", "size": "1"}],
+        )
+
+        assert _fetch_rows(db_path, "task-library-book")[0]["book_id"] == book_id
+
+
 def _setup_service(tmpdir: str) -> tuple[str, UserDB, DownloadHistoryService, int]:
     """Shared fixture: initialized db + service + one user id."""
     db_path = os.path.join(tmpdir, "users.db")

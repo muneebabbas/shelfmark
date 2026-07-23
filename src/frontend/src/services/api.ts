@@ -59,6 +59,7 @@ const API = {
   activityDismiss: `${API_BASE}/activity/dismiss`,
   activityDismissMany: `${API_BASE}/activity/dismiss-many`,
   activityHistory: `${API_BASE}/activity/history`,
+  libraryBooks: `${API_BASE}/library/books`,
 };
 
 // Custom error class for authentication failures
@@ -478,6 +479,26 @@ export const getMetadataBookInfo = async (provider: string, bookId: string): Pro
   );
 
   return transformMetadataToBook(response);
+};
+
+export interface AddLibraryBookResult {
+  book_id: number;
+  files_exist_globally: boolean;
+  in_flight_globally: boolean;
+  in_my_library: boolean;
+}
+
+export const addLibraryBook = async (
+  metadataProvider: string,
+  providerBookId: string,
+): Promise<AddLibraryBookResult> => {
+  return fetchJSON<AddLibraryBookResult>(API.libraryBooks, {
+    method: 'POST',
+    body: JSON.stringify({
+      metadata_provider: metadataProvider,
+      provider_book_id: providerBookId,
+    }),
+  });
 };
 
 // Download a specific release (from ReleaseModal)

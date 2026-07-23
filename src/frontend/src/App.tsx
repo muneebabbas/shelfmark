@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import { useState, useCallback, useRef, useMemo } from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 
 import { ActivitySidebar } from './components/activity';
 import { AdvancedFilters } from './components/AdvancedFilters';
@@ -58,6 +58,7 @@ import {
   isApiResponseError,
   updateSelfUser,
   setBookTargetState,
+  addLibraryBook,
   type DownloadReleasePayload,
 } from './services/api';
 import type {
@@ -260,6 +261,7 @@ const AdminSettingsWarmupMount = () => {
 
 function App() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { toasts, showToast, removeToast } = useToast();
   const { socket } = useSocket();
 
@@ -976,6 +978,29 @@ function App() {
       }
     }
   };
+
+  const handleAddToLibrary = useCallback(
+    async (book: Book): Promise<void> => {
+      if (book.in_my_library && book.book_id != null) {
+        void navigate(`/library/${book.book_id}`);
+        return;
+      }
+      if (!book.provider || !book.provider_id) {
+        const error = new Error('This book cannot be added to the library');
+        showToast(error.message, 'error');
+        throw error;
+      }
+
+      try {
+        const result = await addLibraryBook(book.provider, book.provider_id);
+        void navigate(`/library/${result.book_id}`);
+      } catch (error) {
+        showToast(getErrorMessage(error, 'Failed to add book to library'), 'error');
+        throw error;
+      }
+    },
+    [navigate, showToast],
+  );
 
   const submitRequests = useCallback(
     async (payloads: CreateRequestPayload[], successMessage: string): Promise<boolean> => {
@@ -2559,6 +2584,7 @@ function App() {
               book={selectedBook}
               onClose={() => setSelectedBook(null)}
               onDownload={handleDownload}
+              onAddToLibrary={isMetadataBook(selectedBook) ? handleAddToLibrary : undefined}
               onShowToast={showToast}
               onFindDownloads={(book) => {
                 setSelectedBook(null);

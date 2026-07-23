@@ -1135,6 +1135,19 @@ def api_download_release() -> Response | tuple[Response, int]:
         )
         if on_behalf_error:
             return on_behalf_error
+        raw_library_book_id = data.get("library_book_id")
+        library_book_id = normalize_positive_int(raw_library_book_id)
+        if raw_library_book_id is not None and library_book_id is None:
+            return jsonify({"error": "library_book_id must be a positive integer"}), 400
+        if library_book_id is not None:
+            if (
+                library_service is None
+                or db_user_id is None
+                or not library_service.is_in_library(user_id=db_user_id, book_id=library_book_id)
+            ):
+                return jsonify({"error": "Book is not in your library"}), 403
+            release_payload = dict(release_payload)
+            release_payload["library_book_id"] = library_book_id
         success, error_msg = backend.queue_release(
             release_payload,
             priority,
@@ -1446,6 +1459,7 @@ def _record_download_queued(task_id: str, task: Any) -> None:
             preview=normalize_optional_text(getattr(task, "preview", None)),
             content_type=normalize_optional_text(getattr(task, "content_type", None)),
             origin=origin,
+            book_id=normalize_positive_int(getattr(task, "library_book_id", None)),
             retry_payload=backend.serialize_task_for_retry(task),
         )
     except _OPERATIONAL_ERRORS as exc:
@@ -2677,6 +2691,21 @@ def api_metadata_search() -> Response | tuple[Response, int]:
 
         # Convert BookMetadata objects to dicts
         books_data = [asdict(book) for book in search_result.books]
+        if library_service is not None:
+            metadata_states = library_service.get_metadata_library_states(
+                book_keys=[
+                    (str(book["provider"]), str(book["provider_id"]))
+                    for book in books_data
+                    if book.get("provider") and book.get("provider_id")
+                ],
+                user_id=db_user_id,
+            )
+            for book in books_data:
+                state = metadata_states.get(
+                    (str(book.get("provider", "")), str(book.get("provider_id", "")))
+                )
+                if state is not None:
+                    book.update(state)
 
         # Transform cover_url to local proxy URLs when caching is enabled
         from shelfmark.core.utils import transform_cover_url
@@ -3098,6 +3127,13 @@ def api_releases() -> Response | tuple[Response, int]:
 
         # Convert Release objects to dicts
         releases_data = [_serialize_release(release) for release in all_releases]
+        if library_service is not None:
+            task_ids = [backend.derive_release_task_id(release) for release in releases_data]
+            states = library_service.get_release_library_states(
+                task_ids=task_ids, user_id=get_session_db_user_id(session)
+            )
+            for release, task_id in zip(releases_data, task_ids, strict=True):
+                release.update(states.get(task_id, {}))
 
         # Get column config from the first source searched
         # Reuse the same instance to get any dynamic data (e.g., online_servers for IRC)
