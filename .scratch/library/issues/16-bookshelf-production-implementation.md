@@ -1,5 +1,5 @@
 Type: task
-Status: open
+Status: claimed
 Blocked by: 06, 07, 10
 
 # Implement the validated bookshelf UI
