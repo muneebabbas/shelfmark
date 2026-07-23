@@ -1,5 +1,5 @@
 Type: grilling
-Status: claimed
+Status: resolved
 Blocked by: 01, 02, 04
 Claimed by: wayfinder session 2026-07-23
 
@@ -63,3 +63,63 @@ Research on `main` @ `23bd49c`. #14's multi-file code lives on `feature/library-
 - Footer at `DetailsModal.tsx:374-425`: source link (left), optional `BookTargetDropdown` (`:396-403`), and the action button (`:405-422`) which **already branches** on `isMetadata` — Universal mode calls `onFindDownloads?.(book)` (opens ReleaseModal); direct mode calls `handleDownload()` (queues). The button label in Universal mode is `'Find Downloads'` when state is `download`+text `'Get'`, else `buttonState.text` (`DetailsModal.tsx:88-91`).
 - **Add-to-Library button insertion point**: the right-side flex container at `DetailsModal.tsx:395` — alongside the existing action button. Per #02, Add *repurposes* the existing green Get/+ button (Universal mode only) — so the modal footer's `isMetadata` branch (`:408-413`) is the existing seam. The question is whether Add-in-library state ("In Library", navigates to `/library/:bookId`) is a new `ButtonState` driving the same button, or a separate sibling button. Q3 decides.
 - **Loading state**: the Add click triggers `POST /api/library/books` (#04), which does a synchronous metadata fetch (`_resolve_metadata_book_for_library`, #06) — can take noticeable time. The footer's button already has `disabled`+label-swapping infrastructure; the prototype's "loading" state (`BookDetailPage` first-pass) reused this pattern. Q3 settles the exact UX (spinner vs label-swap vs both).
+
+## Resolution (wayfinder session 2026-07-23)
+
+Grilling settled the contract one question at a time; each sub-decision below was picked deliberately from the options in the grounded-context section. Implementation lives in #11 (the ticket previously said #12 — corrected: #11 is the search-integration impl owner, #12 is author browse).
+
+### Q1 — the "is this release on disk" predicate
+
+A release shown in the search/release-list results is "on disk" iff ∃ ≥1 `download_history` row with `task_id` matching the release's would-be `task_id` (derived from `source_id`/`download_url` per the queue path's derivation), `final_status = 'complete'`, AND `download_path IS NOT NULL`.
+
+- **No fs stat at search time** — defer to serve-time, consistent with #02's deferred-stat decision and #04's "trusts `download_path IS NOT NULL`" sub-decision for `files_exist_globally`. A stale row yields a 404 at serve-time; search stays fast.
+- **Match key is `task_id` alone** — `(source, task_id)` is not a constraint anywhere on `main` and adds nothing; `task_id` is the canonical identifier `download_history` already keys on. The predicate shape is stable across #14's unmerged non-unique-`task_id` change (a release becomes a `GROUP BY task_id` group of file rows — the "∃ ≥1 row" predicate still holds; #11's impl groups if #14 has landed by then).
+- **#11 owns extracting the `task_id` derivation into a shared pure function** both the queue path and the search dedup call pre-queue. The derivation is currently inline per-source (qBittorrent → info_hash from URL; AA → MD5; Prowlarr → GUID; per `DownloadTask.task_id` at `models.py:91`). The search result has no `task_id` until queue time, so #11 must surface the derivation for the search path to call.
+
+### Q2 — per-release flag delivery (backend JOIN)
+
+`api_releases` (`main.py:3053`, after `_serialize_release`) extends each serialized release row with:
+
+- `is_on_disk: bool` — the Q1 predicate result for this release.
+- `book_id: number | null` — the `books.id` for the release if one exists (the Q4 hook + the Q3b in-library source). Null when the release is on disk but no `books` row exists (the `book_id`-never-set gap — see #11 dependency below).
+- `in_my_library: bool` — true iff a `user_library(user_id, book_id)` row exists for the current user + the `book_id` above (non-null `book_id` is a precondition; `in_my_library` is false when `book_id` is null).
+
+Populated by a **single batched lookup** after serialization: one query `WHERE task_id IN (...)` against `download_history` (complete + path-not-null), then a follow-up for the `book_id`/`in_my_library` resolution if any rows matched. No N+1, no per-row fetch. The frontend gets everything it needs to render the tick (Q4) and the Add/In-Library button state (Q3) in one payload.
+
+### Q3 — Add-to-Library button on `DetailsModal`
+
+**Q3a — button shape (repurpose existing Universal-mode button):**
+
+The existing footer action button (`DetailsModal.tsx:405-422`) is repurposed in Universal mode (`isMetadata` branch). Three states:
+
+1. **`Add +`** — release not in library (`in_my_library` false / `book_id` null). Click → POST `/api/library/books` (#04) → on success navigate `/library/:bookId` (per #02). Post-click behavior per Q3c.
+2. **`In Library`** — release already in library (`in_my_library` true). Disabled-as-add (greyed), but clickable → navigate `/library/:bookId` (Sonarr/Radarr-style jump-to-existing, per #02).
+3. **`Find Downloads`** — the existing universal-mode "open ReleaseModal" affordance. Present in both the `Add +` and `In Library` states (the user can always find releases; grab gate was repealed by #04). Preserves the existing `onFindDownloads?.(book)` → `setReleaseBook` path at `App.tsx:1608-1631`.
+
+Direct-mode rows (`!isMetadata`) keep the existing Download button unchanged — they have no metadata-provider book to Add from (#01's `UNIQUE(metadata_provider, provider_book_id)` NOT NULL contract would be violated by a synthesized row).
+
+**Q3b — in-library state data flow (reuse search-result `in_my_library`):**
+
+`handleShowDetails` (`App.tsx:943-978`) reads `in_my_library` + `book_id` from the already-fetched search-result row when opening DetailsModal for `isMetadataBook(book)`. Zero extra round-trips; the In-Library state renders instantly.
+
+**This supersedes #04 sub-decision 19** ("separate `GET /api/library/books/:book_id` lookup for the already-in-library button state") for the search→DetailsModal path: Q2's batched JOIN makes a separate lookup redundant when a search response is in hand. #04's `GET /api/library/books/:book_id` endpoint survives for direct `/library/:bookId` navigations where no search response is available (e.g. deep links, browser back) — it's not deprecated, just not the source of truth for the modal-render path. *(Map amendment recorded against #04.)*
+
+**Q3c — Add-click loading UX (label-swap + spinner + disable):**
+
+On click: button label swaps to `Adding…` with a spinner icon, button disabled (prevents double-submit). On success (response carries `book_id`): navigate `/library/:bookId`. On 503 (provider down — #04 sub-decision 13: no `books` row inserted on failure): button reverts to `Add +`, inline error toast `Metadata provider unavailable — try again`; user stays on DetailsModal with a recoverable error (does not navigate to a dead `:bookId`). Matches the existing `BookActionButton` state-swap idiom and the #08 first-pass prototype's loading pattern.
+
+### Q4 — "Use existing" affordance on release rows (tick only)
+
+Tick / "On disk" badge on every release row where `is_on_disk` is true. **No navigation action in the badge** — the badge is informational, not an affordance. Re-grab stays via the existing `Get` button (grab gate repealed by #04). Library-jump-to-`:bookId` is owned by Q3a's Add-to-Library button on `DetailsModal`, not the release row.
+
+Defended against the "conditional 'Use existing' when `book_id` exists" option: a release being on disk doesn't mean a `books` row exists (the `book_id`-never-set gap), so a "Use existing" link would dead-end for any release whose `book_id` is null. The Q3a modal-button path owns the `:bookId` navigation where a metadata-provider book exists to Add from — that's the right surface for it.
+
+### Contract dependencies surfaced
+
+1. **#04 amendment (sub-decision 19 superseded for the search→DetailsModal path)** — Q3b makes the batched JOIN in `/api/releases` the source of truth for the already-in-library button state on DetailsModal; #04's separate `GET /api/library/books/:book_id` lookup survives only for direct navigations. Recorded on map.
+2. **#11 owns the contract implementation** with four pieces: (a) the `task_id` derivation extraction into a shared pure function the search path calls pre-queue (Q1); (b) the `/api/releases` batched JOIN adding `is_on_disk` + `book_id` + `in_my_library` (Q2 + Q3b); (c) the `DetailsModal` footer button's three-state shape + the Add-click loading UX (Q3a + Q3c); (d) the release-row "On disk" tick/badge rendering (Q4).
+3. **#11 also owns wiring `book_id` into `record_download`/`finalize_download_files`** (the `map.md:50` fog item). **Hard dependency**: without this, the Q2 batched JOIN finds rows but `book_id` is always null, so `in_my_library` can never be true via the search path — the `In Library` button state on the modal (Q3a state 2) would never render. This was previously an "and/or #11/#02" fog item; #09 sharpens it to a hard #11 contract obligation.
+
+### Ticket-number correction
+
+The ticket's "Output" line said "Implementation lives in #12 (search integration)" — that's wrong. **#11 is the search-integration impl ticket** (its title: "Search/Release-list integration: dedup indicator + add-to-library button"); #12 is author browse MVP. Corrected here; not a decision, just a typo surfaced in the grilling.
