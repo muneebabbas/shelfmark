@@ -42,6 +42,7 @@ import { primeSettingsCache } from './hooks/useSettings';
 import { useToast } from './hooks/useToast';
 import { useUrlSearch } from './hooks/useUrlSearch';
 import { primeUsersCache } from './hooks/useUsersFetch';
+import { LibraryPrototypePage } from './pages/LibraryPrototypePage';
 import { LoginPage } from './pages/LoginPage';
 import {
   getSourceRecordInfo,
@@ -2478,178 +2479,200 @@ function App() {
               : undefined
           }
         >
-          <SearchSection
-            onSearch={handleSearchDispatch}
-            isLoading={isSearching}
-            isInitialState={isInitialState}
-            searchPageTitle={config?.search_page_title || 'Shelfmark'}
-            bookLanguages={bookLanguages}
-            defaultLanguage={defaultLanguageCodes}
-            logoUrl={logoUrl}
-            queryValue={activeQueryValue}
-            queryValueLabel={activeQueryValueLabel}
-            onQueryValueChange={handleActiveQueryValueChange}
-            queryTargets={queryTargets}
-            activeQueryTarget={effectiveActiveQueryTarget}
-            onQueryTargetChange={setActiveQueryTarget}
-            showAdvanced={effectiveShowAdvanced}
-            onAdvancedToggle={
-              hasAdvancedContent ? () => setShowAdvanced(!effectiveShowAdvanced) : undefined
-            }
-            advancedFilters={advancedFilters}
-            onAdvancedFiltersChange={updateAdvancedFilters}
-            contentType={effectiveContentType}
-            onContentTypeChange={setContentType}
-            allowedContentTypes={allowedContentTypes}
-            combinedMode={effectiveCombinedMode}
-            combinedModeLocked={combinedModeLocked}
-            onCombinedModeChange={combinedModeAllowed ? setCombinedMode : undefined}
-            activeQueryField={activeQueryField}
-            searchMode={effectiveSearchMode}
-            onSearchModeChange={handleSearchModeChange}
-            metadataProviders={metadataProviders}
-            activeMetadataProvider={effectiveMetadataProvider}
-            onMetadataProviderChange={handleMetadataProviderChange}
-            isAdmin={requestRoleIsAdmin}
-          />
-
-          <ResultsSection
-            books={books}
-            visible={hasResults}
-            onDetails={handleShowDetails}
-            onDownload={handleDownload}
-            onGetReleases={handleGetReleases}
-            getButtonState={getDirectActionButtonState}
-            getUniversalButtonState={getUniversalActionButtonState}
-            sortValue={visibleResultsSort}
-            showSortControl={
-              !activeQueryUsesSeriesBrowse && !activeQueryUsesListBrowse && !resultsSourceUrl
-            }
-            onSortChange={(value) => {
-              const request = buildCurrentSearchRequest(value);
-              const shouldPersistAppliedSort = !(
-                effectiveSearchMode === 'universal' &&
-                activeQueryUsesSeriesBrowse &&
-                request.appliedSort === seriesBrowseCapability?.sort
-              );
-              if (shouldPersistAppliedSort) {
-                updateAdvancedFilters({ sort: request.appliedSort });
-              }
-              setActiveResultsSort(request.appliedSort);
-              runSearchWithPolicyRefresh({
-                query: request.query,
-                fieldValues: request.fieldValues,
-                searchModeOverride: effectiveSearchMode,
-                providerOverride: request.providerOverride,
-              });
-            }}
-            metadataSortOptions={resolvedMetadataSortOptions}
-            hasMore={hasMore}
-            isLoadingMore={isLoadingMore}
-            onLoadMore={() => {
-              void loadMore(config, effectiveSearchMode);
-            }}
-            totalFound={totalFound}
-            onShowToast={showToast}
-            resultsSourceUrl={resultsSourceUrl}
-          />
-
-          {selectedBook && (
-            <DetailsModal
-              book={selectedBook}
-              onClose={() => setSelectedBook(null)}
-              onDownload={handleDownload}
-              onShowToast={showToast}
-              onFindDownloads={(book) => {
-                setSelectedBook(null);
-                void handleGetReleases(book);
-              }}
-              onSearchSeries={canSearchSeriesForBook(selectedBook) ? handleSearchSeries : undefined}
-              buttonState={
-                isMetadataBook(selectedBook)
-                  ? getUniversalActionButtonState(selectedBook.id)
-                  : getDirectActionButtonState(selectedBook.id)
-              }
-              showReleaseSourceLinks={config?.show_release_source_links !== false}
-            />
-          )}
-
-          {activeReleaseBook && (
-            <ReleaseModal
-              book={activeReleaseBook}
-              onClose={handleReleaseModalClose}
-              onDownload={isBrowseFulfilMode ? handleBrowseFulfilDownload : handleReleaseDownload}
-              onRequestRelease={isBrowseFulfilMode ? undefined : handleReleaseRequest}
-              onRequestBook={
-                isBrowseFulfilMode || !requestRoleIsAdmin ? undefined : handleReleaseBookRequest
-              }
-              getPolicyModeForSource={
-                isBrowseFulfilMode ? () => 'download' : (source, ct) => getSourceMode(source, ct)
-              }
-              supportedFormats={supportedFormats}
-              supportedAudiobookFormats={config?.supported_audiobook_formats || []}
-              contentType={activeReleaseContentType}
-              defaultLanguages={defaultLanguageCodes}
-              bookLanguages={bookLanguages}
-              currentStatus={statusForButtonState}
-              defaultReleaseSource={config?.default_release_source}
-              defaultAudiobookReleaseSource={config?.default_release_source_audiobook}
-              onSearchSeries={
-                isBrowseFulfilMode || !canSearchSeriesForBook(activeReleaseBook)
-                  ? undefined
-                  : handleSearchSeries
-              }
-              defaultShowManualQuery={
-                isBrowseFulfilMode || activeReleaseBook?.provider === 'manual'
-              }
-              isRequestMode={isBrowseFulfilMode || activeReleaseBook?.provider === 'manual'}
-              showReleaseSourceLinks={config?.show_release_source_links !== false}
-              onShowToast={showToast}
-              combinedMode={
-                effectiveCombinedState
-                  ? {
-                      phase: effectiveCombinedState.phase,
-                      stepLabel: `Step ${combinedCurrentStep} of ${combinedSelectionPhases.length} — Select ${effectiveCombinedState.phase === 'ebook' ? 'book' : 'audiobook'}`,
-                      ebookMode: effectiveCombinedState.ebookMode,
-                      audiobookMode: effectiveCombinedState.audiobookMode,
-                      stagedEbookRelease: effectiveCombinedState.stagedEbook?.release ?? null,
-                      stagedAudiobookRelease: effectiveCombinedState.stagedAudiobook ?? null,
-                      onNext: !combinedIsFinalStep ? handleCombinedNext : undefined,
-                      onBack: combinedHasPreviousStep ? handleCombinedBack : undefined,
-                      onClearSelection: handleCombinedClearSelection,
-                      onDownload: combinedIsFinalStep
-                        ? (release) => {
-                            void handleCombinedDownload(release);
-                          }
-                        : undefined,
+          <Routes>
+            <Route path="/library/prototype" element={<LibraryPrototypePage />} />
+            <Route
+              path="*"
+              element={
+                <>
+                  <SearchSection
+                    onSearch={handleSearchDispatch}
+                    isLoading={isSearching}
+                    isInitialState={isInitialState}
+                    searchPageTitle={config?.search_page_title || 'Shelfmark'}
+                    bookLanguages={bookLanguages}
+                    defaultLanguage={defaultLanguageCodes}
+                    logoUrl={logoUrl}
+                    queryValue={activeQueryValue}
+                    queryValueLabel={activeQueryValueLabel}
+                    onQueryValueChange={handleActiveQueryValueChange}
+                    queryTargets={queryTargets}
+                    activeQueryTarget={effectiveActiveQueryTarget}
+                    onQueryTargetChange={setActiveQueryTarget}
+                    showAdvanced={effectiveShowAdvanced}
+                    onAdvancedToggle={
+                      hasAdvancedContent ? () => setShowAdvanced(!effectiveShowAdvanced) : undefined
                     }
-                  : null
+                    advancedFilters={advancedFilters}
+                    onAdvancedFiltersChange={updateAdvancedFilters}
+                    contentType={effectiveContentType}
+                    onContentTypeChange={setContentType}
+                    allowedContentTypes={allowedContentTypes}
+                    combinedMode={effectiveCombinedMode}
+                    combinedModeLocked={combinedModeLocked}
+                    onCombinedModeChange={combinedModeAllowed ? setCombinedMode : undefined}
+                    activeQueryField={activeQueryField}
+                    searchMode={effectiveSearchMode}
+                    onSearchModeChange={handleSearchModeChange}
+                    metadataProviders={metadataProviders}
+                    activeMetadataProvider={effectiveMetadataProvider}
+                    onMetadataProviderChange={handleMetadataProviderChange}
+                    isAdmin={requestRoleIsAdmin}
+                  />
+
+                  <ResultsSection
+                    books={books}
+                    visible={hasResults}
+                    onDetails={handleShowDetails}
+                    onDownload={handleDownload}
+                    onGetReleases={handleGetReleases}
+                    getButtonState={getDirectActionButtonState}
+                    getUniversalButtonState={getUniversalActionButtonState}
+                    sortValue={visibleResultsSort}
+                    showSortControl={
+                      !activeQueryUsesSeriesBrowse &&
+                      !activeQueryUsesListBrowse &&
+                      !resultsSourceUrl
+                    }
+                    onSortChange={(value) => {
+                      const request = buildCurrentSearchRequest(value);
+                      const shouldPersistAppliedSort = !(
+                        effectiveSearchMode === 'universal' &&
+                        activeQueryUsesSeriesBrowse &&
+                        request.appliedSort === seriesBrowseCapability?.sort
+                      );
+                      if (shouldPersistAppliedSort) {
+                        updateAdvancedFilters({ sort: request.appliedSort });
+                      }
+                      setActiveResultsSort(request.appliedSort);
+                      runSearchWithPolicyRefresh({
+                        query: request.query,
+                        fieldValues: request.fieldValues,
+                        searchModeOverride: effectiveSearchMode,
+                        providerOverride: request.providerOverride,
+                      });
+                    }}
+                    metadataSortOptions={resolvedMetadataSortOptions}
+                    hasMore={hasMore}
+                    isLoadingMore={isLoadingMore}
+                    onLoadMore={() => {
+                      void loadMore(config, effectiveSearchMode);
+                    }}
+                    totalFound={totalFound}
+                    onShowToast={showToast}
+                    resultsSourceUrl={resultsSourceUrl}
+                  />
+
+                  {selectedBook && (
+                    <DetailsModal
+                      book={selectedBook}
+                      onClose={() => setSelectedBook(null)}
+                      onDownload={handleDownload}
+                      onShowToast={showToast}
+                      onFindDownloads={(book) => {
+                        setSelectedBook(null);
+                        void handleGetReleases(book);
+                      }}
+                      onSearchSeries={
+                        canSearchSeriesForBook(selectedBook) ? handleSearchSeries : undefined
+                      }
+                      buttonState={
+                        isMetadataBook(selectedBook)
+                          ? getUniversalActionButtonState(selectedBook.id)
+                          : getDirectActionButtonState(selectedBook.id)
+                      }
+                      showReleaseSourceLinks={config?.show_release_source_links !== false}
+                    />
+                  )}
+
+                  {activeReleaseBook && (
+                    <ReleaseModal
+                      book={activeReleaseBook}
+                      onClose={handleReleaseModalClose}
+                      onDownload={
+                        isBrowseFulfilMode ? handleBrowseFulfilDownload : handleReleaseDownload
+                      }
+                      onRequestRelease={isBrowseFulfilMode ? undefined : handleReleaseRequest}
+                      onRequestBook={
+                        isBrowseFulfilMode || !requestRoleIsAdmin
+                          ? undefined
+                          : handleReleaseBookRequest
+                      }
+                      getPolicyModeForSource={
+                        isBrowseFulfilMode
+                          ? () => 'download'
+                          : (source, ct) => getSourceMode(source, ct)
+                      }
+                      supportedFormats={supportedFormats}
+                      supportedAudiobookFormats={config?.supported_audiobook_formats || []}
+                      contentType={activeReleaseContentType}
+                      defaultLanguages={defaultLanguageCodes}
+                      bookLanguages={bookLanguages}
+                      currentStatus={statusForButtonState}
+                      defaultReleaseSource={config?.default_release_source}
+                      defaultAudiobookReleaseSource={config?.default_release_source_audiobook}
+                      onSearchSeries={
+                        isBrowseFulfilMode || !canSearchSeriesForBook(activeReleaseBook)
+                          ? undefined
+                          : handleSearchSeries
+                      }
+                      defaultShowManualQuery={
+                        isBrowseFulfilMode || activeReleaseBook?.provider === 'manual'
+                      }
+                      isRequestMode={isBrowseFulfilMode || activeReleaseBook?.provider === 'manual'}
+                      showReleaseSourceLinks={config?.show_release_source_links !== false}
+                      onShowToast={showToast}
+                      combinedMode={
+                        effectiveCombinedState
+                          ? {
+                              phase: effectiveCombinedState.phase,
+                              stepLabel: `Step ${combinedCurrentStep} of ${combinedSelectionPhases.length} — Select ${effectiveCombinedState.phase === 'ebook' ? 'book' : 'audiobook'}`,
+                              ebookMode: effectiveCombinedState.ebookMode,
+                              audiobookMode: effectiveCombinedState.audiobookMode,
+                              stagedEbookRelease:
+                                effectiveCombinedState.stagedEbook?.release ?? null,
+                              stagedAudiobookRelease:
+                                effectiveCombinedState.stagedAudiobook ?? null,
+                              onNext: !combinedIsFinalStep ? handleCombinedNext : undefined,
+                              onBack: combinedHasPreviousStep ? handleCombinedBack : undefined,
+                              onClearSelection: handleCombinedClearSelection,
+                              onDownload: combinedIsFinalStep
+                                ? (release) => {
+                                    void handleCombinedDownload(release);
+                                  }
+                                : undefined,
+                            }
+                          : null
+                      }
+                    />
+                  )}
+
+                  {pendingRequestPayload && (
+                    <RequestConfirmationModal
+                      payload={pendingRequestPayload}
+                      extraPayloads={pendingRequestExtraPayloads}
+                      allowNotes={allowRequestNotes}
+                      onConfirm={handleConfirmRequest}
+                      onClose={() => {
+                        setPendingRequestPayload(null);
+                        setPendingRequestExtraPayloads([]);
+                      }}
+                    />
+                  )}
+
+                  {effectivePendingOnBehalfDownload && (
+                    <OnBehalfConfirmationModal
+                      isOpen={Boolean(effectivePendingOnBehalfDownload)}
+                      actingAsName={pendingOnBehalfUserName}
+                      itemTitle={pendingOnBehalfTitle}
+                      onConfirm={handleConfirmOnBehalfDownload}
+                      onClose={() => setPendingOnBehalfDownload(null)}
+                    />
+                  )}
+                </>
               }
             />
-          )}
-
-          {pendingRequestPayload && (
-            <RequestConfirmationModal
-              payload={pendingRequestPayload}
-              extraPayloads={pendingRequestExtraPayloads}
-              allowNotes={allowRequestNotes}
-              onConfirm={handleConfirmRequest}
-              onClose={() => {
-                setPendingRequestPayload(null);
-                setPendingRequestExtraPayloads([]);
-              }}
-            />
-          )}
-
-          {effectivePendingOnBehalfDownload && (
-            <OnBehalfConfirmationModal
-              isOpen={Boolean(effectivePendingOnBehalfDownload)}
-              actingAsName={pendingOnBehalfUserName}
-              itemTitle={pendingOnBehalfTitle}
-              onConfirm={handleConfirmOnBehalfDownload}
-              onClose={() => setPendingOnBehalfDownload(null)}
-            />
-          )}
+          </Routes>
         </main>
 
         <div className={usePinnedMainScrollContainer ? 'mt-auto' : undefined}>
