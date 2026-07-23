@@ -1,6 +1,7 @@
 Type: grilling
-Status: open
+Status: claimed
 Blocked by: 01, 02, 04
+Claimed by: wayfinder session 2026-07-23
 
 # Release-list "files already on disk" indicator + add-to-library button on work detail
 
