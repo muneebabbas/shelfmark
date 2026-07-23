@@ -1,5 +1,6 @@
 Type: task
-Status: open
+Status: claimed
+Assignee: OpenCode (claimed 2026-07-23)
 Blocked by: 06, 09
 
 # Search/Release-list integration: dedup indicator + add-to-library button
