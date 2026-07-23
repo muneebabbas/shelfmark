@@ -121,9 +121,12 @@ export const BookDetailPage = ({
   if (!book) return null;
 
   const formats = [...new Set(book.files.flatMap((file) => (file.format ? [file.format] : [])))];
+  const kindleFormats = formats.filter((format) => format.toLowerCase() === 'epub');
   const latestFiles = latestFilesByFormat(book.files);
-  const defaultKindleFormat = formats.find((format) => format.toLowerCase() === 'epub') ?? null;
-  const selectedKindleFormat = formats.includes(kindleFormat) ? kindleFormat : defaultKindleFormat;
+  const defaultKindleFormat = kindleFormats[0] ?? null;
+  const selectedKindleFormat = kindleFormats.includes(kindleFormat)
+    ? kindleFormat
+    : defaultKindleFormat;
   const canSendToKindle = selectedKindleFormat !== null;
   const findReleases = () => onFindReleases(toReleaseBook(book));
   const mutate = async (action: () => Promise<void>, success: string) => {
@@ -233,23 +236,26 @@ export const BookDetailPage = ({
                   {files[0].indexer_display_name || 'Unknown source'} ·{' '}
                   {dateLabel(files[0].downloaded_at)}
                 </span>
-                <button
-                  type="button"
-                  className="text-xs text-rose-700 dark:text-rose-300"
-                  onClick={() =>
-                    void mutate(
-                      () => unlinkLibraryRelease(book.book_id, files[0].history_id),
-                      'Release unlinked',
-                    )
-                  }
-                >
-                  Unlink release
-                </button>
+                {files.some((file) => file.downloadable_by_me) && (
+                  <button
+                    type="button"
+                    className="text-xs text-rose-700 dark:text-rose-300"
+                    onClick={() =>
+                      void mutate(
+                        () => unlinkLibraryRelease(book.book_id, files[0].history_id),
+                        'Release unlinked',
+                      )
+                    }
+                  >
+                    Unlink release
+                  </button>
+                )}
               </div>
               {files.map((file) => (
                 <div key={file.history_id} className="flex items-center gap-3 px-4 py-2 text-sm">
                   <span className="uppercase">{file.format || 'unknown'}</span>
                   <span className="text-xs text-gray-500">{formatFileSize(file.size)}</span>
+                  {file.protocol && <span className="text-xs text-gray-500">{file.protocol}</span>}
                   <button
                     type="button"
                     className="ml-auto text-xs text-sky-700 dark:text-sky-300"
@@ -291,12 +297,12 @@ export const BookDetailPage = ({
         <div className="flex gap-2">
           <select
             value={selectedKindleFormat ?? 'auto'}
-            disabled={!formats.length}
+            disabled={!kindleFormats.length}
             onChange={(event) => setKindleFormat(event.target.value)}
             className="rounded border border-(--border-muted) bg-transparent px-2 text-sm"
           >
             <option value="auto">Auto (EPUB)</option>
-            {formats.map((format) => (
+            {kindleFormats.map((format) => (
               <option key={format} value={format}>
                 {format.toUpperCase()}
               </option>

@@ -2,8 +2,9 @@ export interface LibraryFile {
   history_id: number;
   task_id: string;
   format: string | null;
-  size: number | null;
+  size: string | null;
   indexer_display_name: string | null;
+  protocol: string | null;
   downloaded_at: string | null;
   downloadable_by_me: boolean;
 }
@@ -61,8 +62,4 @@ export const groupFilesByRelease = (files: LibraryFile[]): Array<[string, Librar
   );
 };
 
-export const formatFileSize = (size: number | null): string => {
-  if (size === null) return '';
-  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-};
+export const formatFileSize = (size: string | null): string => size ?? '';
