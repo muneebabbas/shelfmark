@@ -1373,6 +1373,52 @@ def _emit_activity_update_for_task(*, payload: dict[str, Any], task: Any) -> Non
     )
 
 
+def _build_download_file_rows(task: Any) -> list[dict[str, Any]]:
+    """Build per-file row dicts for :meth:`finalize_download_files`.
+
+    Reads ``task.library_paths`` (populated by the folder output handler
+    from ``transfer_book_files``, or defaulted to ``[download_path]`` by
+    the orchestrator for single-path output handlers) and derives the
+    per-file ``format`` (from the path extension) and ``size`` (from the
+    on-disk file size when stat succeeds) for each row. Returns an empty
+    list when the transfer produced no paths — the sentinel is still
+    cleared and no file rows are inserted.
+    """
+    raw_paths = getattr(task, "library_paths", None)
+    if not raw_paths:
+        download_path = normalize_optional_text(getattr(task, "download_path", None))
+        if download_path is None:
+            return []
+        raw_paths = [download_path]
+
+    rows: list[dict[str, Any]] = []
+    for raw_path in raw_paths:
+        normalized_path = normalize_optional_text(raw_path)
+        if normalized_path is None:
+            continue
+        file_format: str | None = None
+        file_size: str | None = None
+        try:
+            path_obj = Path(normalized_path)
+            suffix = path_obj.suffix.lstrip(".")
+            if suffix:
+                file_format = suffix.lower()
+            try:
+                file_size = str(path_obj.stat().st_size)
+            except OSError:
+                file_size = None
+        except TypeError, ValueError:
+            pass
+        rows.append(
+            {
+                "download_path": normalized_path,
+                "format": file_format,
+                "size": file_size,
+            }
+        )
+    return rows
+
+
 def _record_download_queued(task_id: str, task: Any) -> None:
     """Persist initial download record when a task enters the queue."""
     if download_history_service is None:
@@ -1442,11 +1488,12 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
     finalized_download = False
     if download_history_service is not None:
         try:
-            download_history_service.finalize_download(
+            file_rows = _build_download_file_rows(task)
+            download_history_service.finalize_download_files(
                 task_id=task_id,
                 final_status=final_status,
                 status_message=normalize_optional_text(getattr(task, "status_message", None)),
-                download_path=normalize_optional_text(getattr(task, "download_path", None)),
+                file_rows=file_rows,
                 retry_payload=backend.serialize_task_for_retry(task),
             )
             finalized_download = True

@@ -338,8 +338,12 @@ def transfer_file_to_library(
     status_callback: Callable[[str, str | None], None],
     *,
     use_hardlink: bool,
-) -> str | None:
-    """Transfer a single file into a library path derived from metadata."""
+) -> list[Path] | None:
+    """Transfer a single file into a library path derived from metadata.
+
+    Returns the list of transferred paths (one entry) so multi-file callers
+    have a uniform shape; ``None`` on a per-file transfer failure.
+    """
     extension = source_path.suffix.lstrip(".") or task.format
     template_metadata = dict(metadata)
     template_metadata.setdefault("OriginalName", source_path.stem)
@@ -368,7 +372,7 @@ def transfer_file_to_library(
         safe_cleanup_path(temp_file, task)
 
     status_callback("complete", "Complete")
-    return str(final_path)
+    return [final_path]
 
 
 def transfer_directory_to_library(
@@ -381,8 +385,13 @@ def transfer_directory_to_library(
     status_callback: Callable[[str, str | None], None],
     *,
     use_hardlink: bool,
-) -> str | None:
-    """Transfer a directory tree into a library path derived from metadata."""
+) -> list[Path] | None:
+    """Transfer a directory tree into a library path derived from metadata.
+
+    Returns the list of transferred paths (one entry per discovered book
+    file) so callers preserve every file of a multi-file release; ``None``
+    on scan or transfer failure.
+    """
     content_type = task.content_type.lower() if task.content_type else None
     source_files, _, _, scan_error = scan_directory_tree(source_dir, content_type)
     if scan_error:
@@ -475,4 +484,4 @@ def transfer_directory_to_library(
     )
     status_callback("complete", message)
 
-    return str(transferred_paths[0])
+    return transferred_paths

@@ -407,7 +407,17 @@ class LibraryService:
                 conn.close()
 
     def unlink_download_from_user(self, *, user_id: int, book_id: int, history_id: int) -> bool:
-        """Hard-delete the per-user link. Per #04: file and ``download_history`` row untouched."""
+        """Release-atomic unlink: delete the user's ``user_downloads`` links for
+        **every file row in the release** identified by ``history_id``.
+
+        Per #13 decision (4-a-strict): the ``:history_id`` identifies any file
+        row of the release; the service fans out across sibling file rows
+        sharing the same ``task_id`` and deletes ``user_downloads`` links for
+        all of them for the requesting user. The underlying ``download_history``
+        rows and the on-disk files are untouched. Per-file unlink within a
+        release is out of scope (releases own atomically). Returns ``True`` if
+        any link was removed.
+        """
         normalized_user_id = normalize_positive_int(user_id)
         normalized_history_id = self._history_identity(history_id)
         self._book_identity(book_id)
@@ -417,9 +427,35 @@ class LibraryService:
         with self._lock:
             conn = self._connect()
             try:
+                task_id = conn.execute(
+                    "SELECT task_id FROM download_history WHERE id = ?",
+                    (normalized_history_id,),
+                ).fetchone()
+                if task_id is None:
+                    # No row to derive task_id from — nothing to unlink.
+                    # Preserves the #08 #04 sub-decision 7 "file/history untouched"
+                    # invariant and the mid-flight-404 UX (no link row yet).
+                    return False
+                normalized_task_id = (
+                    str(task_id["task_id"]) if task_id["task_id"] is not None else None
+                )
+                if normalized_task_id is None:
+                    # Fall back to per-row unlink when task_id is unavailable.
+                    cursor = conn.execute(
+                        "DELETE FROM user_downloads WHERE user_id = ? AND history_id = ?",
+                        (normalized_user_id, normalized_history_id),
+                    )
+                    conn.commit()
+                    return cursor.rowcount > 0
+                # Fan out across every sibling file row sharing the task_id.
                 cursor = conn.execute(
-                    "DELETE FROM user_downloads WHERE user_id = ? AND history_id = ?",
-                    (normalized_user_id, normalized_history_id),
+                    """
+                    DELETE FROM user_downloads
+                    WHERE user_id = ? AND history_id IN (
+                        SELECT id FROM download_history WHERE task_id = ?
+                    )
+                    """,
+                    (normalized_user_id, normalized_task_id),
                 )
                 conn.commit()
                 return cursor.rowcount > 0
