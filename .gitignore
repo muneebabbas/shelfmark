@@ -234,7 +234,6 @@ pyrightconfig.json
 /downloaded_files
 /.local/
 *.local.*
-AGENTS.md
 .claude/
 .nvmrc
 .playwright-mcp/
