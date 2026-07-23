@@ -58,6 +58,7 @@ export const BookDetailPage = ({
   const [loading, setLoading] = useState(true);
   const [autoOpenedFor, setAutoOpenedFor] = useState<number | null>(null);
   const [kindleFormat, setKindleFormat] = useState('epub');
+  const findRequested = new URLSearchParams(location.search).get('find') === 'true';
 
   const load = useCallback(async () => {
     if (!Number.isInteger(bookId) || bookId < 1) {
@@ -87,15 +88,15 @@ export const BookDetailPage = ({
   useDependencyEffect(() => {
     if (
       book &&
-      (autoFindReleases || new URLSearchParams(location.search).get('find') === 'true') &&
+      (findRequested || autoFindReleases) &&
       !book.files.length &&
-      !book.in_flight.length &&
+      (findRequested || !book.in_flight.length) &&
       autoOpenedFor !== book.book_id
     ) {
       setAutoOpenedFor(book.book_id);
       onFindReleases(toReleaseBook(book));
     }
-  }, [autoFindReleases, autoOpenedFor, book, location.search, onFindReleases]);
+  }, [autoFindReleases, autoOpenedFor, book, findRequested, onFindReleases]);
 
   if (loading) return <BookDetailSkeleton />;
   if (error) {
