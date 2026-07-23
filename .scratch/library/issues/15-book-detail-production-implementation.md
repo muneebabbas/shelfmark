@@ -1,5 +1,5 @@
 Type: task
-Status: open
+Status: claimed
 Blocked by: 06, 07, 08, 14
 
 # Implement the validated book detail UI

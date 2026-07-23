@@ -1,5 +1,5 @@
 Type: prototype
-Status: open
+Status: parked
 Blocked by: 04, 06, 07
 
 # Author browse MVP (Hardcover author endpoint, suggestions only)
@@ -33,3 +33,7 @@ Verification: `make frontend-typecheck` passes; the page renders against mock da
 ## Outcome of this ticket
 
 Prototype React code on the feature branch. After this ticket, the map is done — the way to the destination is clear.
+
+## Comments
+
+- Parked for now at the user's request. This is deferred rather than ruled out of scope.
