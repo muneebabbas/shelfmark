@@ -1,7 +1,7 @@
 // Book detail page at `/library/:bookId` — per ticket #08.
 //
-// Land of the central library UX surface: per-format downloads, per-file
-// release-level list with unlink, Send-to-Kindle with #05 format override
+// Land of the central library UX surface: latest-per-format downloads, an
+// advanced release-level list with unlink, Send-to-Kindle with #05 format override
 // picker, Find Releases modal trigger (auto-open on empty state per #02),
 // in-flight indicator, loading skeleton + error retry card.
 //
@@ -24,6 +24,8 @@ import {
   type LibraryFile,
   DEFAULT_LIBRARY_AUTO_FIND_RELEASES,
   formatSize,
+  groupFilesByRelease,
+  latestFilesByFormat,
   resolveKindleFormat,
   unionFormats,
 } from './types';
@@ -152,6 +154,7 @@ export const BookDetailPage = ({
 
   const data = state.data;
   const formats = unionFormats(data.files);
+  const latestFiles = latestFilesByFormat(data.files);
   const filesExistGlobally = data.files.length > 0 || data.in_flight.length > 0;
   const inFlightGlobally = data.in_flight.length > 0;
   // Per #02 sub-decision 5: auto-open Find Releases only when both
@@ -162,6 +165,7 @@ export const BookDetailPage = ({
     <BookDetailContent
       data={data}
       formats={formats}
+      latestFiles={latestFiles}
       filesExistGlobally={filesExistGlobally}
       inFlightGlobally={inFlightGlobally}
       shouldAutoOpenFindReleases={shouldAutoOpenFindReleases}
@@ -175,6 +179,7 @@ export const BookDetailPage = ({
 interface BookDetailContentProps {
   data: BookDetailResponse;
   formats: string[];
+  latestFiles: LibraryFile[];
   filesExistGlobally: boolean;
   inFlightGlobally: boolean;
   shouldAutoOpenFindReleases: boolean;
@@ -186,6 +191,7 @@ interface BookDetailContentProps {
 const BookDetailContent = ({
   data,
   formats,
+  latestFiles,
   filesExistGlobally,
   inFlightGlobally,
   shouldAutoOpenFindReleases,
@@ -258,25 +264,33 @@ const BookDetailContent = ({
         </div>
       </header>
 
-      {/* Formats on disk — union across all complete download_history rows */}
+      {/* The common view exposes one deterministic latest file per format. */}
       <section className="mb-8">
         <h2 className="mb-3 text-xs font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400">
-          Formats on disk
+          Available formats
         </h2>
         {filesExistGlobally ? (
           <div className="overflow-hidden rounded-xl border border-(--border-muted) bg-(--bg-soft)">
-            {formats.map((fmt) => (
+            {latestFiles.map((file) => (
               <div
-                key={fmt}
+                key={file.format}
                 className="flex items-center justify-between border-b border-(--border-muted) px-4 py-3 last:border-b-0"
               >
-                <span className="text-sm font-medium text-(--text) uppercase">{fmt}</span>
+                <div>
+                  <p className="text-sm font-medium text-(--text) uppercase">{file.format}</p>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Latest from {file.indexer_display_name || 'unknown source'}
+                    {file.downloaded_at
+                      ? ` · ${new Date(file.downloaded_at).toLocaleDateString()}`
+                      : ''}
+                  </p>
+                </div>
                 <button
                   type="button"
                   className="rounded-md bg-sky-700 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-sky-800"
                   onClick={() => {
                     onPrototypeAction?.(
-                      `Download ${fmt.toUpperCase()} (prototype only — wires to GET /api/library/books/${data.book_id}/download?format=${fmt} in #11)`,
+                      `Download latest ${file.format?.toUpperCase() || ''} (prototype only — wires to GET /api/library/books/${data.book_id}/download?format=${file.format} in #11)`,
                     );
                   }}
                 >
@@ -290,44 +304,14 @@ const BookDetailContent = ({
         )}
       </section>
 
-      {/* Per-file release-level list — completed + in-flight (per #04 sub-decision 6 + #08 unlink UX) */}
+      {/* Advanced provenance view: a release is the derived task_id group. */}
       {filesExistGlobally && (
-        <section className="mb-8">
-          <h2 className="mb-3 text-xs font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400">
-            Files in your library
-          </h2>
-          <div className="overflow-x-auto rounded-xl border border-(--border-muted) bg-(--bg-soft)">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-(--border-muted) text-xs text-gray-500 uppercase dark:text-gray-400">
-                <tr>
-                  <th className="px-4 py-2 font-medium">Format</th>
-                  <th className="px-4 py-2 font-medium">Size</th>
-                  <th className="px-4 py-2 font-medium">Indexer</th>
-                  <th className="px-4 py-2 font-medium">Downloaded</th>
-                  <th className="px-4 py-2 text-right font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.files.map((file) => (
-                  <FileRow
-                    key={file.history_id}
-                    file={file}
-                    bookId={data.book_id}
-                    onPrototypeAction={onPrototypeAction}
-                  />
-                ))}
-                {data.in_flight.map((inFlight) => (
-                  <InFlightRow
-                    key={inFlight.history_id}
-                    inFlight={inFlight}
-                    bookId={data.book_id}
-                    onPrototypeAction={onPrototypeAction}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <ReleasesSection
+          files={data.files}
+          inFlight={data.in_flight}
+          bookId={data.book_id}
+          onPrototypeAction={onPrototypeAction}
+        />
       )}
 
       <SendToKindleCard
@@ -416,107 +400,107 @@ const EmptyFilesState = ({ onFindReleases }: { onFindReleases: () => void }) => 
   </div>
 );
 
-const FileRow = ({
-  file,
-  bookId,
-  onPrototypeAction,
-}: {
-  file: LibraryFile;
-  bookId: number;
-  onPrototypeAction?: (label: string) => void;
-}) => {
-  return (
-    <tr className="border-b border-(--border-muted) last:border-b-0">
-      <td className="px-4 py-2 font-medium text-(--text) uppercase">{file.format || '—'}</td>
-      <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{formatSize(file.size)}</td>
-      <td className="px-4 py-2 text-gray-700 dark:text-gray-300">
-        {file.indexer_display_name || '—'}
-      </td>
-      <td className="px-4 py-2 text-gray-700 dark:text-gray-300">
-        {file.downloaded_at ? new Date(file.downloaded_at).toLocaleDateString() : '—'}
-      </td>
-      <td className="px-4 py-2 text-right">
-        <div className="flex items-center justify-end gap-2">
-          {file.downloadable_by_me ? (
-            <>
-              <button
-                type="button"
-                className="rounded-md bg-sky-700 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-sky-800"
-                onClick={() => {
-                  onPrototypeAction?.(
-                    `Download ${file.format?.toUpperCase() || ''} (prototype only — wires to GET /api/library/books/${bookId}/download?history_id=${file.history_id} in #11)`,
-                  );
-                }}
-              >
-                Download
-              </button>
-              <button
-                type="button"
-                className="rounded-md bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700 transition-colors hover:bg-rose-100 dark:bg-rose-900/20 dark:text-rose-300 dark:hover:bg-rose-900/40"
-                onClick={() => {
-                  onPrototypeAction?.(
-                    `Unlink history_id=${file.history_id} (prototype only — wires to DELETE /api/library/books/${bookId}/downloads/${file.history_id} in #11)`,
-                  );
-                }}
-              >
-                Unlink
-              </button>
-            </>
-          ) : (
-            <span className="text-xs text-gray-400 dark:text-gray-500">—</span>
-          )}
-        </div>
-      </td>
-    </tr>
-  );
-};
-
-const InFlightRow = ({
+const ReleasesSection = ({
+  files,
   inFlight,
   bookId,
   onPrototypeAction,
 }: {
-  inFlight: InFlightDownload;
+  files: LibraryFile[];
+  inFlight: InFlightDownload[];
   bookId: number;
   onPrototypeAction?: (label: string) => void;
 }) => {
-  // Per #08 decision 3: unlink mid-flight is disallowed with error. The DELETE
-  // returns 409 when final_status='active'; the UI greys Unlink with a tooltip
-  // explaining why. (In the live API, in-flight rows live in the separate
-  // `in_flight` array — they're not in `files` because they don't yet have a
-  // `download_path`. So the Unlink button on an in-flight row is the surface
-  // where this decision *visibly* matters.)
+  const releases = groupFilesByRelease(files);
   return (
-    <tr className="border-b border-(--border-muted) bg-amber-50/30 last:border-b-0 dark:bg-amber-900/10">
-      <td className="px-4 py-2 font-medium text-(--text) uppercase">
-        {inFlight.format || '—'}
-        <span className="ml-2 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
-          in flight
-        </span>
-      </td>
-      <td className="px-4 py-2 text-gray-700 dark:text-gray-300">in flight</td>
-      <td className="px-4 py-2 text-gray-700 dark:text-gray-300">
-        {inFlight.source_display_name || '—'}
-      </td>
-      <td className="px-4 py-2 text-gray-700 dark:text-gray-300">—</td>
-      <td className="px-4 py-2 text-right">
-        <Tooltip content="This download is in progress — unlink it after it finishes.">
-          <button
-            type="button"
-            disabled
-            aria-label={`Unlink in-flight download ${inFlight.history_id} (disabled)`}
-            onClick={() => {
-              onPrototypeAction?.(
-                `Unlink (blocked) history_id=${inFlight.history_id} — would attempt DELETE /api/library/books/${bookId}/downloads/${inFlight.history_id}, 409 per #08 decision 3`,
-              );
-            }}
-            className="cursor-not-allowed rounded-md bg-gray-300 px-2 py-1 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400"
-          >
-            Unlink
-          </button>
-        </Tooltip>
-      </td>
-    </tr>
+    <section className="mb-8">
+      <details className="group">
+        <summary className="flex cursor-pointer list-none items-center justify-between rounded-xl border border-(--border-muted) bg-(--bg-soft) px-4 py-3 text-sm font-medium text-(--text)">
+          <span>Releases</span>
+          <span className="text-xs font-normal text-gray-500 group-open:hidden dark:text-gray-400">
+            Browse a specific source or previous file
+          </span>
+          <span className="hidden text-xs font-normal text-gray-500 group-open:inline dark:text-gray-400">
+            Hide advanced choices
+          </span>
+        </summary>
+        <div className="mt-3 space-y-3">
+          {releases.map((release) => {
+            const representative = release.files[0];
+            const unlinkable = release.files.find((file) => file.downloadable_by_me);
+            return (
+              <div
+                key={release.taskId}
+                className="rounded-xl border border-(--border-muted) bg-(--bg-soft)"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-(--border-muted) px-4 py-3">
+                  <div>
+                    <p className="text-sm font-medium text-(--text)">
+                      {representative.indexer_display_name || 'Unknown source'}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {representative.downloaded_at
+                        ? `Completed ${new Date(representative.downloaded_at).toLocaleDateString()}`
+                        : 'Completion date unavailable'}
+                    </p>
+                  </div>
+                  {unlinkable && (
+                    <button
+                      type="button"
+                      className="rounded-md bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700 transition-colors hover:bg-rose-100 dark:bg-rose-900/20 dark:text-rose-300 dark:hover:bg-rose-900/40"
+                      onClick={() => {
+                        onPrototypeAction?.(
+                          `Unlink release ${release.taskId} (prototype only — DELETE /api/library/books/${bookId}/downloads/${unlinkable.history_id} removes every file in this release)`,
+                        );
+                      }}
+                    >
+                      Unlink release
+                    </button>
+                  )}
+                </div>
+                <div className="divide-y divide-(--border-muted)">
+                  {release.files.map((file) => (
+                    <div
+                      key={file.history_id}
+                      className="flex items-center justify-between gap-3 px-4 py-3"
+                    >
+                      <span className="text-sm font-medium text-(--text) uppercase">
+                        {file.format || '—'}
+                      </span>
+                      <span className="ml-auto text-xs text-gray-500 dark:text-gray-400">
+                        {formatSize(file.size)}
+                      </span>
+                      {file.downloadable_by_me && (
+                        <button
+                          type="button"
+                          className="rounded-md bg-sky-700 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-sky-800"
+                          onClick={() => {
+                            onPrototypeAction?.(
+                              `Download ${file.format?.toUpperCase() || ''} from release ${release.taskId} (prototype only — GET /api/library/books/${bookId}/download?history_id=${file.history_id})`,
+                            );
+                          }}
+                        >
+                          Download this file
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          {inFlight.map((download) => (
+            <div
+              key={download.history_id}
+              className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+            >
+              {download.source_display_name || 'A release'} is still downloading. It will appear
+              here once complete.
+            </div>
+          ))}
+        </div>
+      </details>
+    </section>
   );
 };
 

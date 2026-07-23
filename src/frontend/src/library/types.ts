@@ -7,6 +7,7 @@
 
 export interface LibraryFile {
   history_id: number;
+  task_id: string;
   format: string | null;
   size: number | null;
   indexer_display_name: string | null;
@@ -17,6 +18,7 @@ export interface LibraryFile {
 
 export interface InFlightDownload {
   history_id: number;
+  task_id: string;
   format: string | null;
   source_display_name: string | null;
 }
@@ -62,6 +64,48 @@ export function unionFormats(files: LibraryFile[]): string[] {
     if (f.format) seen.add(f.format);
   }
   return Array.from(seen);
+}
+
+// The default format view picks one concrete File per format: the newest file
+// wins, with history_id making otherwise-equal timestamps deterministic.
+export function latestFilesByFormat(files: LibraryFile[]): LibraryFile[] {
+  const latestByFormat = new Map<string, LibraryFile>();
+  for (const file of files) {
+    if (!file.format) continue;
+    const current = latestByFormat.get(file.format);
+    if (
+      !current ||
+      (file.downloaded_at ?? '') > (current.downloaded_at ?? '') ||
+      (file.downloaded_at === current.downloaded_at && file.history_id > current.history_id)
+    ) {
+      latestByFormat.set(file.format, file);
+    }
+  }
+  return Array.from(latestByFormat.values()).sort((a, b) =>
+    (a.format ?? '').localeCompare(b.format ?? ''),
+  );
+}
+
+export interface ReleaseGroup {
+  taskId: string;
+  files: LibraryFile[];
+}
+
+export function groupFilesByRelease(files: LibraryFile[]): ReleaseGroup[] {
+  const groups = new Map<string, LibraryFile[]>();
+  for (const file of files) {
+    const group = groups.get(file.task_id) ?? [];
+    group.push(file);
+    groups.set(file.task_id, group);
+  }
+  return Array.from(groups, ([taskId, group]) => ({
+    taskId,
+    files: group.sort((a, b) => (a.format ?? '').localeCompare(b.format ?? '')),
+  })).sort((a, b) => {
+    const latestA = Math.max(...a.files.map((file) => Date.parse(file.downloaded_at ?? '') || 0));
+    const latestB = Math.max(...b.files.map((file) => Date.parse(file.downloaded_at ?? '') || 0));
+    return latestB - latestA;
+  });
 }
 
 // Per #05: resolve the format Send-to-Kindle will use. Default priority is
