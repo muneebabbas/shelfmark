@@ -64,7 +64,7 @@ Prototype React code on the feature branch, plus a written note in the resolutio
 ## Answer
 
 The revised prototype is on `library/08-book-detail-prototype-reconciled` at
-`1c6a6cc` (`prototype(library:#08): group advanced releases`).
+`dfc2b4e` (including #14's multi-file release contract).
 
 The page has two levels:
 
