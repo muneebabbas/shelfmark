@@ -1,5 +1,6 @@
 Type: prototype
-Status: open
+Status: claimed
+Claimed by: wayfinder session 2026-07-23
 Blocked by: 04, 05, 07
 
 # Book detail page UI (with per-format downloads and Send-to-Kindle)
