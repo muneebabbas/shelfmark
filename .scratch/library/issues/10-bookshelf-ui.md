@@ -1,5 +1,5 @@
 Type: prototype
-Status: claimed
+Status: resolved
 Blocked by: 04, 07
 
 # Bookshelf / library view UI
@@ -33,3 +33,7 @@ Prototype React code on the feature branch plus a written note in the resolution
 ## Comments
 
 - Prototype: `library/10-bookshelf-prototype` at `c0540e1` adds `/library/prototype?variant=A|B|C` with mock data and the real app shell. `npm run typecheck` passes. Awaiting a user-selected direction before resolution.
+
+## Answer
+
+Variant A, **Cover shelf**, is the validated direction. The production bookshelf is a responsive cover-forward grid: title, primary author, and compact format badges live below each cover; a neutral title-initial placeholder replaces missing covers. It provides client-side title/author search and an `All / Has files / Needs files` filter against the unpaginated result set. File-less Books show **Find this book**, which navigates to book detail and opens Find Releases. Variants B and C remain prototype-only reference material on `library/10-bookshelf-prototype` at `c0540e1`.
