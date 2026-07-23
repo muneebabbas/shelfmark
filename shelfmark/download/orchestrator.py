@@ -737,6 +737,14 @@ def _download_task(task_id: str, cancel_flag: Event) -> str | None:
     if result:
         task.staged_path = None
         _clear_task_error_state(task)
+        # Per #13: ensure task.library_paths carries every transferred path
+        # for the terminal history hook. Folder output already populated it
+        # from transfer_book_files; single-path output handlers (email,
+        # booklore) return only the primary path — default to [result] so
+        # the finalize pipeline inserts at least one file row. download_path
+        # is already set by the queue's update_download_path caller.
+        if not task.library_paths:
+            task.library_paths = [result]
 
     return result
 
