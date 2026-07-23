@@ -42,6 +42,7 @@ import { primeSettingsCache } from './hooks/useSettings';
 import { useToast } from './hooks/useToast';
 import { useUrlSearch } from './hooks/useUrlSearch';
 import { primeUsersCache } from './hooks/useUsersFetch';
+import { BookDetailPage } from './library/BookDetailPage';
 import { LoginPage } from './pages/LoginPage';
 import {
   getSourceRecordInfo,
@@ -2504,81 +2505,104 @@ function App() {
               : undefined
           }
         >
-          <SearchSection
-            onSearch={handleSearchDispatch}
-            isLoading={isSearching}
-            isInitialState={isInitialState}
-            searchPageTitle={config?.search_page_title || 'Shelfmark'}
-            bookLanguages={bookLanguages}
-            defaultLanguage={defaultLanguageCodes}
-            logoUrl={logoUrl}
-            queryValue={activeQueryValue}
-            queryValueLabel={activeQueryValueLabel}
-            onQueryValueChange={handleActiveQueryValueChange}
-            queryTargets={queryTargets}
-            activeQueryTarget={effectiveActiveQueryTarget}
-            onQueryTargetChange={setActiveQueryTarget}
-            showAdvanced={effectiveShowAdvanced}
-            onAdvancedToggle={
-              hasAdvancedContent ? () => setShowAdvanced(!effectiveShowAdvanced) : undefined
-            }
-            advancedFilters={advancedFilters}
-            onAdvancedFiltersChange={updateAdvancedFilters}
-            contentType={effectiveContentType}
-            onContentTypeChange={setContentType}
-            allowedContentTypes={allowedContentTypes}
-            combinedMode={effectiveCombinedMode}
-            combinedModeLocked={combinedModeLocked}
-            onCombinedModeChange={combinedModeAllowed ? setCombinedMode : undefined}
-            activeQueryField={activeQueryField}
-            searchMode={effectiveSearchMode}
-            onSearchModeChange={handleSearchModeChange}
-            metadataProviders={metadataProviders}
-            activeMetadataProvider={effectiveMetadataProvider}
-            onMetadataProviderChange={handleMetadataProviderChange}
-            isAdmin={requestRoleIsAdmin}
-          />
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <>
+                  <SearchSection
+                    onSearch={handleSearchDispatch}
+                    isLoading={isSearching}
+                    isInitialState={isInitialState}
+                    searchPageTitle={config?.search_page_title || 'Shelfmark'}
+                    bookLanguages={bookLanguages}
+                    defaultLanguage={defaultLanguageCodes}
+                    logoUrl={logoUrl}
+                    queryValue={activeQueryValue}
+                    queryValueLabel={activeQueryValueLabel}
+                    onQueryValueChange={handleActiveQueryValueChange}
+                    queryTargets={queryTargets}
+                    activeQueryTarget={effectiveActiveQueryTarget}
+                    onQueryTargetChange={setActiveQueryTarget}
+                    showAdvanced={effectiveShowAdvanced}
+                    onAdvancedToggle={
+                      hasAdvancedContent ? () => setShowAdvanced(!effectiveShowAdvanced) : undefined
+                    }
+                    advancedFilters={advancedFilters}
+                    onAdvancedFiltersChange={updateAdvancedFilters}
+                    contentType={effectiveContentType}
+                    onContentTypeChange={setContentType}
+                    allowedContentTypes={allowedContentTypes}
+                    combinedMode={effectiveCombinedMode}
+                    combinedModeLocked={combinedModeLocked}
+                    onCombinedModeChange={combinedModeAllowed ? setCombinedMode : undefined}
+                    activeQueryField={activeQueryField}
+                    searchMode={effectiveSearchMode}
+                    onSearchModeChange={handleSearchModeChange}
+                    metadataProviders={metadataProviders}
+                    activeMetadataProvider={effectiveMetadataProvider}
+                    onMetadataProviderChange={handleMetadataProviderChange}
+                    isAdmin={requestRoleIsAdmin}
+                  />
 
-          <ResultsSection
-            books={books}
-            visible={hasResults}
-            onDetails={handleShowDetails}
-            onDownload={handleDownload}
-            onAddToLibrary={handleAddToLibrary}
-            getButtonState={getDirectActionButtonState}
-            getUniversalButtonState={getUniversalActionButtonState}
-            sortValue={visibleResultsSort}
-            showSortControl={
-              !activeQueryUsesSeriesBrowse && !activeQueryUsesListBrowse && !resultsSourceUrl
-            }
-            onSortChange={(value) => {
-              const request = buildCurrentSearchRequest(value);
-              const shouldPersistAppliedSort = !(
-                effectiveSearchMode === 'universal' &&
-                activeQueryUsesSeriesBrowse &&
-                request.appliedSort === seriesBrowseCapability?.sort
-              );
-              if (shouldPersistAppliedSort) {
-                updateAdvancedFilters({ sort: request.appliedSort });
+                  <ResultsSection
+                    books={books}
+                    visible={hasResults}
+                    onDetails={handleShowDetails}
+                    onDownload={handleDownload}
+                    onAddToLibrary={handleAddToLibrary}
+                    getButtonState={getDirectActionButtonState}
+                    getUniversalButtonState={getUniversalActionButtonState}
+                    sortValue={visibleResultsSort}
+                    showSortControl={
+                      !activeQueryUsesSeriesBrowse &&
+                      !activeQueryUsesListBrowse &&
+                      !resultsSourceUrl
+                    }
+                    onSortChange={(value) => {
+                      const request = buildCurrentSearchRequest(value);
+                      const shouldPersistAppliedSort = !(
+                        effectiveSearchMode === 'universal' &&
+                        activeQueryUsesSeriesBrowse &&
+                        request.appliedSort === seriesBrowseCapability?.sort
+                      );
+                      if (shouldPersistAppliedSort) {
+                        updateAdvancedFilters({ sort: request.appliedSort });
+                      }
+                      setActiveResultsSort(request.appliedSort);
+                      runSearchWithPolicyRefresh({
+                        query: request.query,
+                        fieldValues: request.fieldValues,
+                        searchModeOverride: effectiveSearchMode,
+                        providerOverride: request.providerOverride,
+                      });
+                    }}
+                    metadataSortOptions={resolvedMetadataSortOptions}
+                    hasMore={hasMore}
+                    isLoadingMore={isLoadingMore}
+                    onLoadMore={() => {
+                      void loadMore(config, effectiveSearchMode);
+                    }}
+                    totalFound={totalFound}
+                    onShowToast={showToast}
+                    resultsSourceUrl={resultsSourceUrl}
+                  />
+                </>
               }
-              setActiveResultsSort(request.appliedSort);
-              runSearchWithPolicyRefresh({
-                query: request.query,
-                fieldValues: request.fieldValues,
-                searchModeOverride: effectiveSearchMode,
-                providerOverride: request.providerOverride,
-              });
-            }}
-            metadataSortOptions={resolvedMetadataSortOptions}
-            hasMore={hasMore}
-            isLoadingMore={isLoadingMore}
-            onLoadMore={() => {
-              void loadMore(config, effectiveSearchMode);
-            }}
-            totalFound={totalFound}
-            onShowToast={showToast}
-            resultsSourceUrl={resultsSourceUrl}
-          />
+            />
+            <Route
+              path="/library/:bookId"
+              element={
+                <BookDetailPage
+                  autoFindReleases={config?.library_auto_find_releases !== false}
+                  onFindReleases={setReleaseBook}
+                  onOpenSettings={handleSettingsClick}
+                  onShowToast={showToast}
+                />
+              }
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
 
           {selectedBook && (
             <DetailsModal

@@ -305,6 +305,53 @@ def test_download_file_returns_404_when_no_matching_format_on_disk(app, user_db)
     assert resp.status_code == 404
 
 
+def test_download_file_serves_exact_history_id(app, user_db, tmp_path):
+    alice = user_db.create_user(username="alice")
+    book_id = client_post_book(app, alice, "hardcover", "1")
+    epub_path = tmp_path / "book.epub"
+    pdf_path = tmp_path / "book.pdf"
+    epub_path.write_bytes(b"epub")
+    pdf_path.write_bytes(b"pdf")
+    history_ids = _seed_multi_file_release(
+        user_db,
+        task_id="release-download",
+        user_id=alice["id"],
+        username="alice",
+        book_id=book_id,
+        files=[("epub", str(epub_path)), ("pdf", str(pdf_path))],
+    )
+
+    resp = _authed_client(app, alice).get(
+        f"/api/library/books/{book_id}/download?history_id={history_ids[1]}"
+    )
+
+    assert resp.status_code == 200
+    assert resp.data == b"pdf"
+
+
+def test_download_file_rejects_history_id_from_another_book(app, user_db, tmp_path):
+    alice = user_db.create_user(username="alice")
+    first_book = client_post_book(app, alice, "hardcover", "1")
+    second_book = client_post_book(app, alice, "hardcover", "2")
+    file_path = tmp_path / "book.epub"
+    file_path.write_bytes(b"epub")
+    history_id = _seed_history_row(
+        user_db,
+        task_id="other-book-release",
+        user_id=alice["id"],
+        username="alice",
+        book_id=second_book,
+        fmt="epub",
+        download_path=str(file_path),
+    )
+
+    resp = _authed_client(app, alice).get(
+        f"/api/library/books/{first_book}/download?history_id={history_id}"
+    )
+
+    assert resp.status_code == 404
+
+
 def test_send_to_kindle_fail_fast_no_compatible_file(app, user_db):
     alice = user_db.create_user(username="alice")
     book_id = client_post_book(app, alice, "hardcover", "1")

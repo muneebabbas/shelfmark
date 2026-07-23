@@ -1228,6 +1228,7 @@ def api_config() -> Response | tuple[Response, int]:
             "default_release_source": default_release_source,
             "default_release_source_audiobook": default_release_source_audiobook,
             "show_release_source_links": app_config.get("SHOW_RELEASE_SOURCE_LINKS", True),
+            "library_auto_find_releases": app_config.get("LIBRARY_AUTO_FIND_RELEASES", True),
             "show_combined_selector": app_config.get(
                 "SHOW_COMBINED_SELECTOR", True, user_id=db_user_id
             ),
