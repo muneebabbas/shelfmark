@@ -35,7 +35,7 @@ A Shelfmark fork where each user has a per-user library of books (metadata-provi
 
 <!-- See issues/ directory; the frontier is open, unblocked, unclaimed children -->
 
-(NB: this section listed live tickets for at-a-glance frontier scanning, but the local-markdown tracker expresses the frontier via `Status:` lines + `Blocked by:` resolved-state checks. Refer to `.scratch/library/issues/NN-*.md` files directly. #13 resolved 2026-07-23; #14 resolved 2026-07-23; #09 resolved 2026-07-23; #08 resolved 2026-07-23. #11 was `Blocked by: 09` (now resolved) — #11 is unblocked, with the #09 contract + the hard `book_id`-wiring dependency on board. Frontier: #10, #11 (carries #09 contract + `book_id` obligation), #12.)
+(NB: this section listed live tickets for at-a-glance frontier scanning, but the local-markdown tracker expresses the frontier via `Status:` lines + `Blocked by:` resolved-state checks. Refer to `.scratch/library/issues/NN-*.md` files directly. #13 resolved 2026-07-23; #14 resolved 2026-07-23; #09 resolved 2026-07-23; #08 resolved 2026-07-23. #11 was `Blocked by: 09` (now resolved) — #11 is unblocked, with the #09 contract + the hard `book_id`-wiring dependency on board. Frontier: #10, #11 (carries #09 contract + `book_id` obligation), #12, #15 (production implementation of the validated book-detail contract).)
 
 ### #14 context pointer
 
