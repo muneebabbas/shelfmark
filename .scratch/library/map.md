@@ -31,12 +31,13 @@ A Shelfmark fork where each user has a per-user library of books (metadata-provi
 
 - [Book detail page UI (with per-format downloads and Send-to-Kindle)](issues/08-book-detail-page-ui.md) — default Available formats shows the newest completed File per format (`downloaded_at`, then `history_id`) with compact source/date provenance; a collapsed advanced Releases section groups exact files by `task_id`, supports specific-file downloads, and makes unlink visibly release-wide. Format choice belongs on book detail, not the search release list. Send-to-Kindle stays EPUB-first (or explicit override) and sends the latest file for its chosen format. Prototype: `library/08-book-detail-prototype-reconciled` at `dfc2b4e`; `npm run typecheck` passes.
 - [Bookshelf / library view UI](issues/10-bookshelf-ui.md) — Variant A, Cover shelf, is the validated responsive cover grid with title/author and format badges; it includes client-side title/author search, an `All / Has files / Needs files` filter, a title-initial cover fallback, and Find this book → book detail with Find Releases open. Prototype: `library/10-bookshelf-prototype` at `c0540e1`.
+- [Search/Release-list integration: dedup indicator + add-to-library button](issues/11-search-integration-impl.md) — metadata search and release results now resolve library state in batches; Universal search cards and detail modal support Add + / In Library / Find Downloads; library-originated releases persist their Book id through multi-file finalize. Implementation: `feature/library-search-integration` at `cc82700`, `0d02a1f`.
 
 ## Open tickets
 
 <!-- See issues/ directory; the frontier is open, unblocked, unclaimed children -->
 
-(NB: this section listed live tickets for at-a-glance frontier scanning, but the local-markdown tracker expresses the frontier via `Status:` lines + `Blocked by:` resolved-state checks. Refer to `.scratch/library/issues/NN-*.md` files directly. #13 resolved 2026-07-23; #14 resolved 2026-07-23; #09 resolved 2026-07-23; #08 resolved 2026-07-23; #10 resolved 2026-07-23. #11 was `Blocked by: 09` (now resolved) — #11 is unblocked, with the #09 contract + the hard `book_id`-wiring dependency on board. Frontier: #11, #12, #15 (production implementation of the validated book-detail contract), #16 (production implementation of the validated bookshelf contract).)
+(NB: this section listed live tickets for at-a-glance frontier scanning, but the local-markdown tracker expresses the frontier via `Status:` lines + `Blocked by:` resolved-state checks. Refer to `.scratch/library/issues/NN-*.md` files directly. #13 resolved 2026-07-23; #14 resolved 2026-07-23; #09 resolved 2026-07-23; #08 resolved 2026-07-23; #10 resolved 2026-07-23; #11 resolved 2026-07-23. Frontier: #12, #15 (production implementation of the validated book-detail contract), #16 (production implementation of the validated bookshelf contract).)
 
 ### #14 context pointer
 

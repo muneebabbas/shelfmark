@@ -1,6 +1,6 @@
 Type: task
-Status: claimed
-Assignee: OpenCode (claimed 2026-07-23)
+Status: resolved
+Assignee: OpenCode (claimed 2026-07-23; resolved 2026-07-23)
 Blocked by: 06, 09
 
 # Search/Release-list integration: dedup indicator + add-to-library button
@@ -38,3 +38,7 @@ Code on the feature branch. Closes the spine of the experience — after this la
 - **Failure**: 503 with `{"error": "Metadata provider unavailable"}` on provider down/rate-limited; no `books` row inserted (per #04 sub-decision 13, strict failure — the snapshot must be self-sufficient).
 - **Already-in-library button state** driven by a separate `GET /api/library/books/:book_id` lookup, NOT by the Add response — because the button renders *before* the user clicks Add. The added lookup checks whether the `user_library` row for this user + Book already exists. If yes → button says "In Library" and navigates to `/library/:bookId` on click; if no → button says "Add +" and POSTs on click.
 - **Download finalize → `user_downloads` insert**: when a user grabs a release (Universal mode, after Add), the existing `download_history` insert (via `_record_download_queued` at `main.py:1321-1349`) is supplemented by a `POST /api/library/books/:book_id/downloads/:history_id` call — or an equivalent server-side insert at finalize time — that creates the `user_downloads(user_id, history_id)` link. The exact wiring (frontend-driven call vs backend hook into `record_download`) is #11's implementation choice; the contract is that every download from a Library user also writes the `user_downloads` link so the file surfaces on book-detail for that user.
+
+## Answer
+
+Implemented on `feature/library-search-integration` at `cc82700` and `0d02a1f`, after merging #14's multi-file release implementation (`c027f5a`). Metadata search now batch-resolves provider-natural-key Book membership for `Add +` / `In Library` controls; release search batch-resolves `is_on_disk`, `book_id`, and `in_my_library` by derived `task_id`; ReleaseModal shows informational On disk badges. Universal search cards and DetailsModal provide Add + (with loading/error recovery), In Library navigation, and a separate Find Downloads action. Library-originated release payloads pass `library_book_id` through queue-time history and multi-file finalize, preserving `download_history.book_id` and its finalize-time `user_downloads` links. Added service/history coverage; focused 48-test backend suite, TypeScript, Ruff, basedpyright, and hook formatting pass. `make checks` remains blocked only by five pre-existing Oxlint no-unnecessary-type-assertion errors in `useUsersFetch.ts` and `SelfSettingsModal.tsx`.
