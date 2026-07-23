@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { Tooltip } from '../components/shared/Tooltip';
 import { useDependencyEffect } from '../hooks/useMountEffect';
@@ -50,6 +50,7 @@ export const BookDetailPage = ({
   onShowToast,
 }: BookDetailPageProps) => {
   const { bookId: rawBookId } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const bookId = Number(rawBookId);
   const [book, setBook] = useState<BookDetailResponse | null>(null);
@@ -57,6 +58,7 @@ export const BookDetailPage = ({
   const [loading, setLoading] = useState(true);
   const [autoOpenedFor, setAutoOpenedFor] = useState<number | null>(null);
   const [kindleFormat, setKindleFormat] = useState('epub');
+  const findRequested = new URLSearchParams(location.search).get('find') === 'true';
 
   const load = useCallback(async () => {
     if (!Number.isInteger(bookId) || bookId < 1) {
@@ -86,15 +88,15 @@ export const BookDetailPage = ({
   useDependencyEffect(() => {
     if (
       book &&
-      autoFindReleases &&
+      (findRequested || autoFindReleases) &&
       !book.files.length &&
-      !book.in_flight.length &&
+      (findRequested || !book.in_flight.length) &&
       autoOpenedFor !== book.book_id
     ) {
       setAutoOpenedFor(book.book_id);
       onFindReleases(toReleaseBook(book));
     }
-  }, [autoFindReleases, autoOpenedFor, book, onFindReleases]);
+  }, [autoFindReleases, autoOpenedFor, book, findRequested, onFindReleases]);
 
   if (loading) return <BookDetailSkeleton />;
   if (error) {
