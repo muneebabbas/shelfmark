@@ -1,7 +1,7 @@
 Type: task
-Status: claimed
+Status: resolved
 Blocked by: 13
-Assignee: glm-5.2-fast (claimed 2026-07-23)
+Assignee: glm-5.2-fast (claimed 2026-07-23; resolved 2026-07-23)
 
 # Implement #13's multi-file release schema + finalize write path
 
@@ -47,3 +47,31 @@ Implement the contract #13 resolved: `download_history` as one-row-per-file (one
 - Unlinking a release with N files deletes all N `user_downloads` links for the user.
 - Mid-flight unlink returns 404.
 - Map's Decisions-so-far gets a #14 context pointer on close; unblocks #08 (blocked by 13), #11 (blocked by 13).
+
+## Resolution
+
+Implemented #13's contract in full on branch `feature/library-multi-file-release` (commit `5fcd684`). `make python-checks` green (ruff lint + format, basedpyright 0 errors, vulture); 1952 unit tests pass (16 new). Tracker state (#13 resolution, #14 opening, CONTEXT.md File section, git-tracking standing preference) landed on `main` directly per the new tracking strategy before the code commit.
+
+### What landed
+
+- **Schema (1):** `_CREATE_TABLES_SQL` drops `UNIQUE` on `download_history.task_id`; new `idx_download_history_task_id` (non-unique) for fresh DBs. `_migrate_download_history_task_id_nonunique` rebuilds the table (copy-to-temp / drop / recreate-without-UNIQUE / copy-back) for legacy installs, preserving rows + `book_id` and recreating all four indexes. Idempotent on re-init.
+- **Transfer return types (2):** `transfer_file_to_library` returns `list[Path] | None` (one entry); `transfer_directory_to_library` returns the full `transferred_paths` list. `transfer_book_files` unchanged (already `list[Path]`). All 10 test-only callers in `test_hardlink.py` updated.
+- **Task carrier (3):** `DownloadTask.library_paths: list[str]` added; `download_path` stays equal to `library_paths[0]` for legacy readers.
+- **Multi-file finalize (4):** `finalize_download_files(task_id, file_rows)` — captures the queue-time sentinel's immutable columns, deletes it (and any crashed-attempt partial rows), inserts N terminal file rows sharing `task_id` (each with `format`/`size`/`download_path`), and inserts N `user_downloads` links for the triggering user (`INSERT OR IGNORE`). `finalize_download` (legacy single-path) delegates with a one-element list. **No-file-row finalizes** (error/cancelled with no transferred path) UPDATE the sentinel in place rather than deleting it — preserves the activity/retry-by-`task_id` lookup contract that a naive delete would have broken (caught by `test_activity_routes_api` + `test_download_api_guardrails`).
+- **Retry path (5):** `record_download` sentinel INSERT writes per-file cols NULL; retry is explicit `DELETE WHERE task_id=?` + sentinel `INSERT`, atomic under the existing `self._lock` + `commit()`. The legacy `ON CONFLICT(task_id) DO UPDATE` is gone (INVALID under non-unique `task_id`).
+- **Terminal hook (6):** `_build_download_file_rows` in `main.py` reads `task.library_paths`, derives `format` (from extension) + `size` (`Path.stat().st_size`) per file. `_record_download_terminal_snapshot` calls `finalize_download_files` with the list. `folder.process_folder_output` sets `task.library_paths` from `transfer_book_files`' `final_paths`; `orchestrator._download_task` defaults it to `[result]` for single-path output handlers (email/booklore).
+- **API (7):** `_serialize_book_detail` adds `task_id` to every `files[]` and `in_flight[]` entry. `get_files_on_disk` / `get_in_flight_files` already `SELECT task_id` — no query change.
+- **Unlink (8):** `unlink_download_from_user` fans out across sibling file rows sharing the row's `task_id`, deleting `user_downloads` links for all of them for the requesting user (release-atomic per (4-a-strict)). Mid-flight unlink (no link yet) returns `False` → route surfaces `200 'unlinked'` idempotently, matching (4-mid-1-ii). Per-file unlink within a release stays impossible.
+- **CONTEXT.md (9):** File / Download section already updated on `main` per #13's resolution; verified no drift.
+
+### Tests (10)
+
+16 new cases: sentinel-per-file-cols-NULL, multi-file finalize (N=3 + N links), retry-while-partial (stray rows cleared before sentinel insert), legacy single-path delegate, no-file-row error finalize (sentinel preserved in place), legacy single-file well-formed group, `task_id` per entry in `files[]` payload, release-atomic unlink fan-out from any file's `history_id`, mid-flight unlink no-op, unknown `history_id` no-op, plus the `test_hardlink.py` return-type updates.
+
+### Notes / follow-ups
+
+- **`download_history.book_id` is never populated by production code today** — neither `record_download` nor `finalize_download_files` sets it. `library_service.get_files_on_disk` filters `WHERE book_id = ?` and currently finds nothing because `book_id` is always NULL. This is **not #14's contract** (it's part of #11's search-integration / the #02 add-to-library flow wiring the request's book to the download). Flagged on the map for the ticket that owns it; not a regression introduced here — the column was already unused before #14.
+- **#08 revision (step 11)**: `library/08-book-detail-prototype` needs updating against the new flat `files[] + task_id` shape (frontend groups by `task_id` for display). Out of #14's scope — handed off to #08 (still claimed on its branch).
+- **Git tracking strategy**: recorded on the map's Notes — `.scratch/library/` lands on `main` directly, always, separate from code branches. Applied here: tracker edits committed to `main` first, then code on `feature/library-multi-file-release`.
+
+Unblocks #08 (blocked-by 13 → resolved) and #11 (blocked-by 13 → resolved).
