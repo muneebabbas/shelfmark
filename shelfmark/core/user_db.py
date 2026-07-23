@@ -69,7 +69,7 @@ ON download_requests (status, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS download_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    task_id TEXT UNIQUE NOT NULL,
+    task_id TEXT NOT NULL,
     user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     username TEXT,
     request_id INTEGER,
@@ -95,6 +95,13 @@ ON download_history (user_id, final_status, terminal_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_download_history_recent
 ON download_history (user_id, terminal_at DESC, id DESC);
+
+-- One row = one file under #13's schema (b); files sharing a task_id belong
+-- to the same release. The index is non-unique because a release can span
+-- multiple file rows. Fresh databases get it here; upgrades get it via
+-- _migrate_download_history_task_id_nonunique().
+CREATE INDEX IF NOT EXISTS idx_download_history_task_id
+ON download_history (task_id);
 
 -- download_history.book_id and idx_download_history_book_id are added by
 -- _migrate_download_history_book_id() so the column exists before the index
@@ -251,6 +258,7 @@ class UserDB:
                 self._migrate_download_history_queued_at(conn)
                 self._migrate_download_history_retry_payload(conn)
                 self._migrate_download_history_book_id(conn)
+                self._migrate_download_history_task_id_nonunique(conn)
                 conn.commit()
                 # WAL mode must be changed outside an open transaction.
                 conn.execute("PRAGMA journal_mode=WAL")
@@ -337,6 +345,79 @@ class UserDB:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_download_history_book_id "
             "ON download_history (book_id, final_status)"
+        )
+
+    def _migrate_download_history_task_id_nonunique(self, conn: sqlite3.Connection) -> None:
+        """Drop the legacy UNIQUE constraint on ``download_history.task_id``.
+
+        Per #13's resolution (schema shape (b)), ``download_history`` is one
+        row = one file; the files of a single release share a non-unique
+        ``task_id``. SQLite cannot drop a UNIQUE constraint in place, so when
+        the legacy constraint is detected the table is rebuilt via the
+        copy-to-temp / drop / recreate / copy-back idiom. Legacy rows keep
+        their existing values (single-file releases trivially form
+        well-formed one-member groups). Fresh databases get the non-unique
+        column directly from ``_CREATE_TABLES_SQL`` and skip the rebuild.
+        """
+        indexes = conn.execute("PRAGMA index_list(download_history)").fetchall()
+        has_unique_task_id = any(
+            str(idx["name"]) == "sqlite_autoindex_download_history_1" and bool(idx["unique"])
+            for idx in indexes
+        )
+        if not has_unique_task_id:
+            # Fresh DB (no auto-index) or already migrated. Ensure the
+            # non-unique index exists for both paths.
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_download_history_task_id "
+                "ON download_history (task_id)"
+            )
+            return
+
+        conn.executescript(
+            """
+            CREATE TABLE download_history_migration AS
+                SELECT * FROM download_history;
+
+            DROP TABLE download_history;
+
+            CREATE TABLE download_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id TEXT NOT NULL,
+                user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                username TEXT,
+                request_id INTEGER,
+                source TEXT NOT NULL,
+                source_display_name TEXT,
+                title TEXT NOT NULL,
+                author TEXT,
+                format TEXT,
+                size TEXT,
+                preview TEXT,
+                content_type TEXT,
+                origin TEXT NOT NULL DEFAULT 'direct',
+                final_status TEXT NOT NULL,
+                status_message TEXT,
+                download_path TEXT,
+                retry_payload TEXT,
+                queued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                terminal_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                book_id INTEGER REFERENCES books(id) ON DELETE SET NULL
+            );
+
+            INSERT INTO download_history
+                SELECT * FROM download_history_migration;
+
+            DROP TABLE download_history_migration;
+
+            CREATE INDEX idx_download_history_user_status
+                ON download_history (user_id, final_status, terminal_at DESC);
+            CREATE INDEX idx_download_history_recent
+                ON download_history (user_id, terminal_at DESC, id DESC);
+            CREATE INDEX idx_download_history_task_id
+                ON download_history (task_id);
+            CREATE INDEX idx_download_history_book_id
+                ON download_history (book_id, final_status);
+            """
         )
 
     def create_user(
