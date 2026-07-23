@@ -12,8 +12,7 @@ interface BookActionButtonProps {
   book: Book;
   buttonState: ButtonStateInfo;
   onDownload: (book: Book) => Promise<void>;
-  onGetReleases: (book: Book) => void;
-  isLoadingReleases?: boolean;
+  onAddToLibrary: (book: Book) => Promise<void>;
   size?: ButtonSize;
   variant?: ButtonVariant;
   fullWidth?: boolean;
@@ -25,8 +24,7 @@ export function BookActionButton({
   book,
   buttonState,
   onDownload,
-  onGetReleases,
-  isLoadingReleases,
+  onAddToLibrary,
   size,
   variant = 'default',
   fullWidth,
@@ -39,9 +37,7 @@ export function BookActionButton({
     return (
       <BookGetButton
         book={book}
-        onGetReleases={onGetReleases}
-        buttonState={buttonState}
-        isLoading={isLoadingReleases}
+        onAddToLibrary={onAddToLibrary}
         size={size}
         variant={variant}
         fullWidth={fullWidth}

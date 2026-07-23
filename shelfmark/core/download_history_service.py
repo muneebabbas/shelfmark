@@ -273,17 +273,24 @@ class DownloadHistoryService:
         preview: str | None,
         content_type: str | None,
         origin: str,
+        book_id: int | None = None,
         retry_payload: dict[str, Any] | None = None,
     ) -> None:
-        """Record a download at queue time with final_status='active'.
+        """Record a download at queue time with ``final_status='active'``.
 
-        On first queue: inserts a new row.
-        On retry (row already exists): resets the row back to 'active'
-        so the normal finalize path works when the retry completes.
+        Per #13's multi-file release contract: inserts one sentinel row per
+        ``task_id`` with the per-file columns (``format``, ``size``,
+        ``download_path``) NULL — they are populated at finalize by
+        :meth:`finalize_download_files` when the transfer completes. On
+        retry, any partial multi-file rows from a crashed previous attempt
+        are deleted before the fresh sentinel is inserted (atomic under
+        the existing lock — the legacy ``ON CONFLICT`` is gone because
+        ``task_id`` is no longer UNIQUE under schema (b)).
         """
         normalized_task_id = _normalize_task_id(task_id)
         normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
         normalized_request_id = normalize_optional_positive_int(request_id, "request_id")
+        normalized_book_id = normalize_optional_positive_int(book_id, "book_id")
         normalized_source = normalize_optional_text(source)
         if normalized_source is None:
             msg = "source must be a non-empty string"
@@ -299,23 +306,26 @@ class DownloadHistoryService:
         with self._lock:
             conn = self._connect()
             try:
+                # Retry path: clear any partial multi-file rows from a crashed
+                # previous attempt before inserting a fresh sentinel. Under
+                # schema (b) a single task_id may have multiple rows, so the
+                # legacy ON CONFLICT(task_id) path is invalid; the DELETE is
+                # safe under the lock + commit.
+                conn.execute(
+                    "DELETE FROM download_history WHERE task_id = ?",
+                    (normalized_task_id,),
+                )
                 conn.execute(
                     """
                 INSERT INTO download_history (
                     task_id, user_id, username, request_id,
                     source, source_display_name,
                     title, author, format, size, preview, content_type,
-                    origin, final_status,
+                    origin, final_status, book_id,
                     status_message, download_path, retry_payload,
                     queued_at, terminal_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NULL, NULL, ?, ?, ?)
-                ON CONFLICT(task_id) DO UPDATE SET
-                    final_status = 'active',
-                    status_message = NULL,
-                    download_path = NULL,
-                    retry_payload = excluded.retry_payload,
-                    terminal_at = ?
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, 'active', ?, NULL, NULL, ?, ?, ?)
                 """,
                     (
                         normalized_task_id,
@@ -326,13 +336,11 @@ class DownloadHistoryService:
                         normalize_optional_text(source_display_name),
                         normalized_title,
                         normalize_optional_text(author),
-                        normalize_optional_text(file_format),
-                        normalize_optional_text(size),
                         normalize_optional_text(preview),
                         normalize_optional_text(content_type),
                         normalized_origin,
+                        normalized_book_id,
                         normalized_retry_payload,
-                        recorded_at,
                         recorded_at,
                         recorded_at,
                     ),
@@ -350,41 +358,199 @@ class DownloadHistoryService:
         download_path: str | None = None,
         retry_payload: dict[str, Any] | None = None,
     ) -> None:
-        """Update an existing download row to its terminal state."""
+        """Update an existing download row to its terminal state.
+
+        Thin delegate to :meth:`finalize_download_files` with a one-element
+        file list — preserves the single-path call signature for direct-mode
+        downloads and any non-library caller. Library callers that surface
+        multiple files per release call :meth:`finalize_download_files`
+        directly.
+        """
+        file_rows: list[dict[str, Any]] = []
+        normalized_path = normalize_optional_text(download_path)
+        if normalized_path is not None:
+            file_rows.append({"download_path": normalized_path})
+        self.finalize_download_files(
+            task_id=task_id,
+            final_status=final_status,
+            status_message=status_message,
+            file_rows=file_rows,
+            retry_payload=retry_payload,
+        )
+
+    def finalize_download_files(
+        self,
+        *,
+        task_id: str,
+        final_status: str,
+        status_message: str | None = None,
+        file_rows: list[dict[str, Any]] | None = None,
+        retry_payload: dict[str, Any] | None = None,
+    ) -> None:
+        """Finalize a release: delete the queue-time sentinel and insert one
+        ``download_history`` row per transferred file plus one
+        ``user_downloads`` link per row for the triggering user.
+
+        Per #13's write path (2-a): the queue-time sentinel (per-file cols
+        NULL) is deleted; N terminal file rows sharing ``task_id`` are
+        inserted with their own ``format``/``size``/``download_path``. Per
+        link-timing decision (4-mid-1-ii), ``user_downloads`` links are
+        inserted here — not at queue time — so an in-flight release has no
+        link row (mid-flight unlink returns 404 by finding nothing). The
+        triggering user is read off the sentinel's ``user_id``.
+
+        When ``file_rows`` is empty (a failed/cancelled finalize with no
+        transferred file) the sentinel is still removed and no file rows
+        are inserted; the caller's ``final_status`` (e.g. ``error`` /
+        ``cancelled``) is recorded on no rows — matching today's behaviour
+        where a terminal failure leaves no complete row.
+        """
         normalized_task_id = _normalize_task_id(task_id)
         normalized_final_status = _normalize_final_status(final_status)
         normalized_status_message = normalize_optional_text(status_message)
-        normalized_download_path = normalize_optional_text(download_path)
         normalized_retry_payload = self._serialize_retry_payload(retry_payload)
         effective_terminal_at = now_utc_iso()
+
+        normalized_file_rows: list[dict[str, str | None]] = []
+        for raw_row in file_rows or []:
+            path_value = normalize_optional_text(raw_row.get("download_path"))
+            if path_value is None:
+                continue
+            normalized_file_rows.append(
+                {
+                    "download_path": path_value,
+                    "format": normalize_optional_text(raw_row.get("format")),
+                    "size": normalize_optional_text(raw_row.get("size")),
+                }
+            )
 
         with self._lock:
             conn = self._connect()
             try:
-                cursor = conn.execute(
-                    """
-                    UPDATE download_history
-                    SET final_status = ?,
-                        status_message = ?,
-                        download_path = ?,
-                        retry_payload = COALESCE(?, retry_payload),
-                        terminal_at = ?
-                    WHERE task_id = ? AND final_status = 'active'
-                    """,
-                    (
-                        normalized_final_status,
-                        normalized_status_message,
-                        normalized_download_path,
-                        normalized_retry_payload,
-                        effective_terminal_at,
-                        normalized_task_id,
-                    ),
-                )
-                rowcount = int(cursor.rowcount) if cursor.rowcount is not None else 0
-                if rowcount < 1:
+                # Capture the queue-time sentinel row. Under schema (b) the
+                # sentinel is the single 'active' row for this task_id; it
+                # carries the immutable release-level columns (source, title,
+                # author, user_id, request_id, ...) that every file row
+                # inherits. Per-file columns (format/size/download_path) are
+                # NULL on the sentinel and populated per-row at finalize.
+                sentinel = conn.execute(
+                    "SELECT * FROM download_history WHERE task_id = ? AND final_status = 'active'"
+                    " ORDER BY id DESC LIMIT 1",
+                    (normalized_task_id,),
+                ).fetchone()
+                if sentinel is None:
                     logger.warning(
-                        "finalize_download: no active row found for task_id=%s (may have been missed at queue time)",
+                        "finalize_download_files: no active sentinel found for task_id=%s "
+                        "(may have been missed at queue time)",
                         normalized_task_id,
+                    )
+                    return
+
+                triggering_user_id = (
+                    int(sentinel["user_id"]) if sentinel["user_id"] is not None else None
+                )
+                # Per #13 link-timing (4-mid-1-ii): user_downloads links are
+                # inserted at finalize, one per file row, for the triggering
+                # user only. The sentinel had no link (mid-flight unlink
+                # returns 404 by finding nothing).
+
+                if not normalized_file_rows:
+                    # No transferred files (error / cancelled / completed but
+                    # yielded no path): preserve the sentinel as the terminal
+                    # row in place rather than deleting it, so activity/retry
+                    # lookups by task_id still resolve. This matches the
+                    # pre-#13 behaviour where finalize_download UPDATE'd the
+                    # single row to its terminal status.
+                    conn.execute(
+                        """
+                        UPDATE download_history
+                        SET final_status = ?,
+                            status_message = ?,
+                            retry_payload = COALESCE(?, retry_payload),
+                            terminal_at = ?
+                        WHERE task_id = ? AND final_status = 'active'
+                        """,
+                        (
+                            normalized_final_status,
+                            normalized_status_message,
+                            normalized_retry_payload,
+                            effective_terminal_at,
+                            normalized_task_id,
+                        ),
+                    )
+                    conn.commit()
+                    return
+
+                # Drop the sentinel (and, defensively, any partial multi-file
+                # rows from a crashed previous finalize attempt for the same
+                # task_id) before inserting the terminal file rows.
+                conn.execute(
+                    "DELETE FROM download_history WHERE task_id = ?",
+                    (normalized_task_id,),
+                )
+
+                inserted_history_ids: list[int] = []
+                for row in normalized_file_rows:
+                    cursor = conn.execute(
+                        """
+                        INSERT INTO download_history (
+                            task_id, user_id, username, request_id,
+                            source, source_display_name,
+                            title, author, format, size, preview, content_type,
+                            origin, final_status, book_id,
+                            status_message, download_path, retry_payload,
+                            queued_at, terminal_at
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            normalized_task_id,
+                            triggering_user_id,
+                            sentinel["username"],
+                            sentinel["request_id"],
+                            sentinel["source"],
+                            sentinel["source_display_name"],
+                            sentinel["title"],
+                            sentinel["author"],
+                            row["format"],
+                            row["size"],
+                            sentinel["preview"],
+                            sentinel["content_type"],
+                            sentinel["origin"],
+                            normalized_final_status,
+                            sentinel["book_id"],
+                            normalized_status_message,
+                            row["download_path"],
+                            normalized_retry_payload,
+                            sentinel["queued_at"],
+                            effective_terminal_at,
+                        ),
+                    )
+                    last_row_id = cursor.lastrowid
+                    if last_row_id is not None:
+                        inserted_history_ids.append(int(last_row_id))
+
+                # One user_downloads link per inserted file row for the
+                # triggering user. INSERT OR IGNORE keeps it idempotent under
+                # any unexpected re-finalize.
+                if triggering_user_id is not None:
+                    conn.executemany(
+                        """
+                        INSERT OR IGNORE INTO user_downloads (user_id, history_id, added_at)
+                        VALUES (?, ?, ?)
+                        """,
+                        [
+                            (triggering_user_id, hid, effective_terminal_at)
+                            for hid in inserted_history_ids
+                        ],
+                    )
+
+                if not inserted_history_ids:
+                    logger.info(
+                        "finalize_download_files: task_id=%s finalized as %s with no file rows "
+                        "(no transferred paths)",
+                        normalized_task_id,
+                        normalized_final_status,
                     )
                 conn.commit()
             finally:

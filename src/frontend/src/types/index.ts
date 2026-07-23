@@ -38,6 +38,8 @@ export interface Book {
   provider?: string; // e.g., 'hardcover', 'openlibrary'
   provider_display_name?: string; // e.g., 'Hardcover', 'Open Library'
   provider_id?: string; // ID in provider's system
+  book_id?: number | null; // Library book ID when this metadata result is known to the library
+  in_my_library?: boolean; // Whether the current user has this book in their library
   isbn_10?: string;
   isbn_13?: string;
   genres?: string[];
@@ -451,6 +453,9 @@ export interface Release {
   peers?: string; // For torrents: "seeders/leechers" display string
   content_type?: string; // "ebook", "audiobook", or "book"
   extra?: Record<string, unknown>; // Source-specific metadata
+  is_on_disk?: boolean; // A completed download with a retained file exists globally
+  book_id?: number | null; // Library book ID when this release has been associated with one
+  in_my_library?: boolean; // Whether the current user has this release's book in their library
 }
 
 // Search info returned by release sources

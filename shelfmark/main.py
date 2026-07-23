@@ -1135,6 +1135,19 @@ def api_download_release() -> Response | tuple[Response, int]:
         )
         if on_behalf_error:
             return on_behalf_error
+        raw_library_book_id = data.get("library_book_id")
+        library_book_id = normalize_positive_int(raw_library_book_id)
+        if raw_library_book_id is not None and library_book_id is None:
+            return jsonify({"error": "library_book_id must be a positive integer"}), 400
+        if library_book_id is not None:
+            if (
+                library_service is None
+                or db_user_id is None
+                or not library_service.is_in_library(user_id=db_user_id, book_id=library_book_id)
+            ):
+                return jsonify({"error": "Book is not in your library"}), 403
+            release_payload = dict(release_payload)
+            release_payload["library_book_id"] = library_book_id
         success, error_msg = backend.queue_release(
             release_payload,
             priority,
@@ -1373,6 +1386,52 @@ def _emit_activity_update_for_task(*, payload: dict[str, Any], task: Any) -> Non
     )
 
 
+def _build_download_file_rows(task: Any) -> list[dict[str, Any]]:
+    """Build per-file row dicts for :meth:`finalize_download_files`.
+
+    Reads ``task.library_paths`` (populated by the folder output handler
+    from ``transfer_book_files``, or defaulted to ``[download_path]`` by
+    the orchestrator for single-path output handlers) and derives the
+    per-file ``format`` (from the path extension) and ``size`` (from the
+    on-disk file size when stat succeeds) for each row. Returns an empty
+    list when the transfer produced no paths — the sentinel is still
+    cleared and no file rows are inserted.
+    """
+    raw_paths = getattr(task, "library_paths", None)
+    if not raw_paths:
+        download_path = normalize_optional_text(getattr(task, "download_path", None))
+        if download_path is None:
+            return []
+        raw_paths = [download_path]
+
+    rows: list[dict[str, Any]] = []
+    for raw_path in raw_paths:
+        normalized_path = normalize_optional_text(raw_path)
+        if normalized_path is None:
+            continue
+        file_format: str | None = None
+        file_size: str | None = None
+        try:
+            path_obj = Path(normalized_path)
+            suffix = path_obj.suffix.lstrip(".")
+            if suffix:
+                file_format = suffix.lower()
+            try:
+                file_size = str(path_obj.stat().st_size)
+            except OSError:
+                file_size = None
+        except TypeError, ValueError:
+            pass
+        rows.append(
+            {
+                "download_path": normalized_path,
+                "format": file_format,
+                "size": file_size,
+            }
+        )
+    return rows
+
+
 def _record_download_queued(task_id: str, task: Any) -> None:
     """Persist initial download record when a task enters the queue."""
     if download_history_service is None:
@@ -1400,6 +1459,7 @@ def _record_download_queued(task_id: str, task: Any) -> None:
             preview=normalize_optional_text(getattr(task, "preview", None)),
             content_type=normalize_optional_text(getattr(task, "content_type", None)),
             origin=origin,
+            book_id=normalize_positive_int(getattr(task, "library_book_id", None)),
             retry_payload=backend.serialize_task_for_retry(task),
         )
     except _OPERATIONAL_ERRORS as exc:
@@ -1442,11 +1502,12 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
     finalized_download = False
     if download_history_service is not None:
         try:
-            download_history_service.finalize_download(
+            file_rows = _build_download_file_rows(task)
+            download_history_service.finalize_download_files(
                 task_id=task_id,
                 final_status=final_status,
                 status_message=normalize_optional_text(getattr(task, "status_message", None)),
-                download_path=normalize_optional_text(getattr(task, "download_path", None)),
+                file_rows=file_rows,
                 retry_payload=backend.serialize_task_for_retry(task),
             )
             finalized_download = True
@@ -2630,6 +2691,21 @@ def api_metadata_search() -> Response | tuple[Response, int]:
 
         # Convert BookMetadata objects to dicts
         books_data = [asdict(book) for book in search_result.books]
+        if library_service is not None:
+            metadata_states = library_service.get_metadata_library_states(
+                book_keys=[
+                    (str(book["provider"]), str(book["provider_id"]))
+                    for book in books_data
+                    if book.get("provider") and book.get("provider_id")
+                ],
+                user_id=db_user_id,
+            )
+            for book in books_data:
+                state = metadata_states.get(
+                    (str(book.get("provider", "")), str(book.get("provider_id", "")))
+                )
+                if state is not None:
+                    book.update(state)
 
         # Transform cover_url to local proxy URLs when caching is enabled
         from shelfmark.core.utils import transform_cover_url
@@ -3051,6 +3127,13 @@ def api_releases() -> Response | tuple[Response, int]:
 
         # Convert Release objects to dicts
         releases_data = [_serialize_release(release) for release in all_releases]
+        if library_service is not None:
+            task_ids = [backend.derive_release_task_id(release) for release in releases_data]
+            states = library_service.get_release_library_states(
+                task_ids=task_ids, user_id=get_session_db_user_id(session)
+            )
+            for release, task_id in zip(releases_data, task_ids, strict=True):
+                release.update(states.get(task_id, {}))
 
         # Get column config from the first source searched
         # Reuse the same instance to get any dynamic data (e.g., online_servers for IRC)

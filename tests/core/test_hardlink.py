@@ -506,7 +506,7 @@ class TestHardlinkWithLibraryMode:
             )
 
         assert result is not None
-        result_path = Path(result)
+        result_path = Path(result[0])
         assert result_path.exists()
         assert result_path.parent.name == "Brandon Sanderson"
         assert result_path.name == "Mistborn.epub"
@@ -540,7 +540,7 @@ class TestHardlinkWithLibraryMode:
         )
 
         assert result is not None
-        result_path = Path(result)
+        result_path = Path(result[0])
         assert result_path.exists()
         # Source should NOT exist (moved)
         assert not source.exists()
@@ -588,7 +588,8 @@ class TestHardlinkWithLibraryMode:
             )
 
         assert result is not None
-        result_path = Path(result)
+        assert len(result) == 3
+        result_path = Path(result[0])
         assert result_path.parent.name == "Brandon Sanderson"
 
         # Check all 3 files created with sequential part numbers
@@ -677,7 +678,8 @@ class TestHardlinkWithLibraryMode:
                 use_hardlink=True,
             )
 
-        result_path = Path(result)
+        assert result is not None
+        result_path = Path(result[0])
         # Single file should NOT have part number (conditional prefix stripped)
         assert result_path.name == "Mistborn.epub"
 
@@ -918,7 +920,7 @@ class TestTorrentOptimization:
         )
 
         assert result is not None
-        assert Path(result).exists()
+        assert Path(result[0]).exists()
         # Original should still exist (copied, not moved)
         assert torrent_path.exists()
 
@@ -949,7 +951,7 @@ class TestTorrentOptimization:
         )
 
         assert result is not None
-        assert Path(result).exists()
+        assert Path(result[0]).exists()
         # Original should be gone (moved)
         assert not staging_path.exists()
 

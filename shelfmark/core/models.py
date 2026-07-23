@@ -139,6 +139,7 @@ class DownloadTask:
     user_id: int | None = None  # DB user ID who queued this download
     username: str | None = None  # Username for {User} template variable
     request_id: int | None = None  # Origin request ID when queued from request fulfilment
+    library_book_id: int | None = None  # Optional Book identity for library downloads
 
     # Runtime state
     priority: int = 0
@@ -147,6 +148,12 @@ class DownloadTask:
     status: QueueStatus = QueueStatus.QUEUED
     status_message: str | None = None
     download_path: str | None = None
+    # Per #13's multi-file release contract: the full list of library paths
+    # produced by a download (one entry per file). ``download_path`` above
+    # stays equal to ``library_paths[0]`` for legacy single-path consumers;
+    # the terminal history hook reads the list to insert one
+    # ``download_history`` row per file.
+    library_paths: list[str] = field(default_factory=list)
     last_error_message: str | None = None
     last_error_type: str | None = None
     staged_path: str | None = None

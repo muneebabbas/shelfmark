@@ -15,7 +15,7 @@ interface CompactViewProps {
   book: Book;
   onDetails: (id: string) => Promise<void>;
   onDownload: (book: Book) => Promise<void>;
-  onGetReleases: (book: Book) => Promise<void>;
+  onAddToLibrary: (book: Book) => Promise<void>;
   buttonState: ButtonStateInfo;
   showDetailsButton?: boolean;
   animationDelay?: number;
@@ -27,7 +27,7 @@ export const CompactView = ({
   book,
   onDetails,
   onDownload,
-  onGetReleases,
+  onAddToLibrary,
   buttonState,
   showDetailsButton = false,
   animationDelay = 0,
@@ -36,7 +36,6 @@ export const CompactView = ({
 }: CompactViewProps) => {
   const { searchMode } = useSearchMode();
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
-  const [isLoadingReleases, setIsLoadingReleases] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -57,15 +56,6 @@ export const CompactView = ({
       await onDetails(id);
     } finally {
       setIsLoadingDetails(false);
-    }
-  };
-
-  const handleGetReleases = async (selectedBook: Book) => {
-    setIsLoadingReleases(true);
-    try {
-      await onGetReleases(selectedBook);
-    } finally {
-      setIsLoadingReleases(false);
     }
   };
 
@@ -246,10 +236,7 @@ export const CompactView = ({
                 book={book}
                 buttonState={buttonState}
                 onDownload={onDownload}
-                onGetReleases={(selectedBook) => {
-                  void handleGetReleases(selectedBook);
-                }}
-                isLoadingReleases={isLoadingReleases}
+                onAddToLibrary={onAddToLibrary}
                 size="sm"
                 className="flex-1"
               />
@@ -259,10 +246,7 @@ export const CompactView = ({
               book={book}
               buttonState={buttonState}
               onDownload={onDownload}
-              onGetReleases={(selectedBook) => {
-                void handleGetReleases(selectedBook);
-              }}
-              isLoadingReleases={isLoadingReleases}
+              onAddToLibrary={onAddToLibrary}
               size="sm"
               fullWidth
             />

@@ -35,6 +35,8 @@ export interface MetadataBookData {
   search_title?: string;
   search_author?: string;
   titles_by_language?: Record<string, string>;
+  book_id?: number | null;
+  in_my_library?: boolean;
 }
 
 export interface SourceRecordData {
@@ -87,6 +89,8 @@ export function transformMetadataToBook(data: MetadataBookData): Book {
     provider: data.provider,
     provider_display_name: data.provider_display_name,
     provider_id: data.provider_id,
+    book_id: data.book_id,
+    in_my_library: data.in_my_library,
     isbn_10: data.isbn_10,
     isbn_13: data.isbn_13,
     genres: data.genres,

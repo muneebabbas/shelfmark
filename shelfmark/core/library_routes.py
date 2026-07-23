@@ -192,6 +192,7 @@ def _serialize_book_detail(
         "files": [
             {
                 "history_id": f["id"],
+                "task_id": f.get("task_id"),
                 "format": f.get("format"),
                 "size": f.get("size"),
                 "indexer_display_name": f.get("source_display_name") or f.get("source"),
@@ -204,6 +205,7 @@ def _serialize_book_detail(
         "in_flight": [
             {
                 "history_id": f["id"],
+                "task_id": f.get("task_id"),
                 "format": f.get("format"),
                 "source_display_name": f.get("source_display_name") or f.get("source"),
             }

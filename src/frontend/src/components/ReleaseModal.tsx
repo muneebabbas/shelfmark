@@ -240,6 +240,21 @@ const ReleaseThumbnail = ({ preview, title }: { preview?: string; title?: string
   );
 };
 
+const OnDiskBadge = () => (
+  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+    <svg
+      className="h-3 w-3"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+      strokeWidth="2.5"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+    </svg>
+    On disk
+  </span>
+);
+
 // Leading cell component - shows thumbnail, badge, or nothing based on config
 const LeadingCell = ({ config, release }: { config?: LeadingCellConfig; release: Release }) => {
   // Default to thumbnail mode if no config
@@ -473,21 +488,24 @@ const ReleaseRow = ({
 
         {/* Fixed: Title and author */}
         <div className="min-w-0">
-          <p className="line-clamp-2 text-sm font-medium" title={release.title}>
-            {showReleaseSourceLinks && release.info_url ? (
-              <a
-                href={release.info_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-emerald-600 hover:underline dark:hover:text-emerald-400"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {release.title}
-              </a>
-            ) : (
-              release.title
-            )}
-          </p>
+          <div className="flex min-w-0 items-start gap-2">
+            <p className="line-clamp-2 text-sm font-medium" title={release.title}>
+              {showReleaseSourceLinks && release.info_url ? (
+                <a
+                  href={release.info_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-emerald-600 hover:underline dark:hover:text-emerald-400"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {release.title}
+                </a>
+              ) : (
+                release.title
+              )}
+            </p>
+            {release.is_on_disk && <OnDiskBadge />}
+          </div>
           {author && <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">{author}</p>}
         </div>
 
@@ -520,24 +538,27 @@ const ReleaseRow = ({
 
         <div className="min-w-0">
           {/* Title and author on same line */}
-          <p className="line-clamp-2 text-sm leading-tight" title={release.title}>
-            {showReleaseSourceLinks && release.info_url ? (
-              <a
-                href={release.info_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-medium hover:text-emerald-600 hover:underline dark:hover:text-emerald-400"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {release.title}
-              </a>
-            ) : (
-              <span className="font-medium">{release.title}</span>
-            )}
-            {author && (
-              <span className="font-normal text-zinc-500 dark:text-zinc-400"> — {author}</span>
-            )}
-          </p>
+          <div className="flex min-w-0 items-start gap-2">
+            <p className="line-clamp-2 text-sm leading-tight" title={release.title}>
+              {showReleaseSourceLinks && release.info_url ? (
+                <a
+                  href={release.info_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium hover:text-emerald-600 hover:underline dark:hover:text-emerald-400"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {release.title}
+                </a>
+              ) : (
+                <span className="font-medium">{release.title}</span>
+              )}
+              {author && (
+                <span className="font-normal text-zinc-500 dark:text-zinc-400"> — {author}</span>
+              )}
+            </p>
+            {release.is_on_disk && <OnDiskBadge />}
+          </div>
           {/* Plugin-provided info line (format, size, indexer, seeders, etc.) */}
           {mobileColumns.length > 0 && (
             <div className="mt-1 flex items-center gap-1.5 text-[10px] text-zinc-500 dark:text-zinc-400">

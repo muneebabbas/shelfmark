@@ -210,6 +210,15 @@ def _build_retry_resolution_fields(
     }
 
 
+def derive_release_task_id(release_data: dict[str, Any]) -> str:
+    """Return the stable history identity for a release before it is queued."""
+    source_id = release_data.get("source_id")
+    if not isinstance(source_id, str) or not source_id.strip():
+        msg = "source_id is required"
+        raise ValueError(msg)
+    return source_id.strip()
+
+
 def queue_release(
     release_data: dict,
     priority: int = 0,
@@ -272,7 +281,7 @@ def queue_release(
 
         # Create a source-agnostic download task from release data
         task = DownloadTask(
-            task_id=release_data["source_id"],
+            task_id=derive_release_task_id(release_data),
             source=source,
             title=release_data.get("title", "Unknown"),
             author=author,
@@ -292,6 +301,7 @@ def queue_release(
             user_id=user_id,
             username=username,
             request_id=request_id,
+            library_book_id=release_data.get("library_book_id"),
             **retry_resolution_fields,
         )
 
@@ -737,6 +747,14 @@ def _download_task(task_id: str, cancel_flag: Event) -> str | None:
     if result:
         task.staged_path = None
         _clear_task_error_state(task)
+        # Per #13: ensure task.library_paths carries every transferred path
+        # for the terminal history hook. Folder output already populated it
+        # from transfer_book_files; single-path output handlers (email,
+        # booklore) return only the primary path — default to [result] so
+        # the finalize pipeline inserts at least one file row. download_path
+        # is already set by the queue's update_download_path caller.
+        if not task.library_paths:
+            task.library_paths = [result]
 
     return result
 

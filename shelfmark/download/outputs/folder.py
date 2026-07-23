@@ -262,4 +262,12 @@ def process_folder_output(
     message = "Complete" if len(final_paths) == 1 else f"Complete ({len(final_paths)} files)"
     status_callback("complete", message)
 
-    return str(final_paths[0])
+    # Per #13's multi-file release contract: carry every transferred path on
+    # the task so the terminal history hook (main.py) can insert one
+    # download_history row per file. download_path stays equal to the first
+    # path for any legacy single-path reader (orchestrator/queue).
+    task.library_paths = [str(p) for p in final_paths]
+    if final_paths:
+        task.download_path = str(final_paths[0])
+
+    return str(final_paths[0]) if final_paths else None

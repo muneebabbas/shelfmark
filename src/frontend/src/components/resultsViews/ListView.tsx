@@ -12,7 +12,7 @@ interface ListViewProps {
   books: Book[];
   onDetails: (id: string) => Promise<void>;
   onDownload: (book: Book) => Promise<void>;
-  onGetReleases: (book: Book) => Promise<void>;
+  onAddToLibrary: (book: Book) => Promise<void>;
   getButtonState: (bookId: string) => ButtonStateInfo;
   getUniversalButtonState: (bookId: string) => ButtonStateInfo;
   showSeriesPosition?: boolean;
@@ -83,7 +83,7 @@ export const ListView = ({
   books,
   onDetails,
   onDownload,
-  onGetReleases,
+  onAddToLibrary,
   getButtonState,
   getUniversalButtonState,
   showSeriesPosition = false,
@@ -91,7 +91,6 @@ export const ListView = ({
 }: ListViewProps) => {
   const { searchMode } = useSearchMode();
   const [detailsLoadingId, setDetailsLoadingId] = useState<string | null>(null);
-  const [releasesLoadingId, setReleasesLoadingId] = useState<string | null>(null);
   const [openDropdownBookId, setOpenDropdownBookId] = useState<string | null>(null);
 
   if (books.length === 0) {
@@ -104,15 +103,6 @@ export const ListView = ({
       await onDetails(bookId);
     } finally {
       setDetailsLoadingId((current) => (current === bookId ? null : current));
-    }
-  };
-
-  const handleGetReleases = async (book: Book) => {
-    setReleasesLoadingId(book.id);
-    try {
-      await onGetReleases(book);
-    } finally {
-      setReleasesLoadingId((current) => (current === book.id ? null : current));
     }
   };
 
@@ -329,10 +319,7 @@ export const ListView = ({
                     book={book}
                     buttonState={buttonState}
                     onDownload={onDownload}
-                    onGetReleases={(selectedBook) => {
-                      void handleGetReleases(selectedBook);
-                    }}
-                    isLoadingReleases={releasesLoadingId === book.id}
+                    onAddToLibrary={onAddToLibrary}
                     variant="icon"
                     size="md"
                   />
