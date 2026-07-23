@@ -1,4 +1,4 @@
-import type { BookDetailResponse } from '../library/types';
+import type { BookDetailResponse, LibraryBooksResponse } from '../library/types';
 import type {
   Book,
   StatusData,
@@ -504,6 +504,10 @@ export const addLibraryBook = async (
 
 export const getLibraryBook = async (bookId: number): Promise<BookDetailResponse> => {
   return fetchJSON<BookDetailResponse>(`${API.libraryBooks}/${encodeURIComponent(String(bookId))}`);
+};
+
+export const getLibraryBooks = async (): Promise<LibraryBooksResponse> => {
+  return fetchJSON<LibraryBooksResponse>(API.libraryBooks);
 };
 
 export const unlinkLibraryRelease = async (bookId: number, historyId: number): Promise<void> => {

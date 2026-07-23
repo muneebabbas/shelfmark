@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { Tooltip } from '../components/shared/Tooltip';
 import { useDependencyEffect } from '../hooks/useMountEffect';
@@ -50,6 +50,7 @@ export const BookDetailPage = ({
   onShowToast,
 }: BookDetailPageProps) => {
   const { bookId: rawBookId } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const bookId = Number(rawBookId);
   const [book, setBook] = useState<BookDetailResponse | null>(null);
@@ -86,7 +87,7 @@ export const BookDetailPage = ({
   useDependencyEffect(() => {
     if (
       book &&
-      autoFindReleases &&
+      (autoFindReleases || new URLSearchParams(location.search).get('find') === 'true') &&
       !book.files.length &&
       !book.in_flight.length &&
       autoOpenedFor !== book.book_id
@@ -94,7 +95,7 @@ export const BookDetailPage = ({
       setAutoOpenedFor(book.book_id);
       onFindReleases(toReleaseBook(book));
     }
-  }, [autoFindReleases, autoOpenedFor, book, onFindReleases]);
+  }, [autoFindReleases, autoOpenedFor, book, location.search, onFindReleases]);
 
   if (loading) return <BookDetailSkeleton />;
   if (error) {

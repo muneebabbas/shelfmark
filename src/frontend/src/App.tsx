@@ -43,6 +43,7 @@ import { useToast } from './hooks/useToast';
 import { useUrlSearch } from './hooks/useUrlSearch';
 import { primeUsersCache } from './hooks/useUsersFetch';
 import { BookDetailPage } from './library/BookDetailPage';
+import { LibraryPage } from './library/LibraryPage';
 import { LoginPage } from './pages/LoginPage';
 import {
   getSourceRecordInfo,
@@ -2590,6 +2591,7 @@ function App() {
                 </>
               }
             />
+            <Route path="/library" element={<LibraryPage />} />
             <Route
               path="/library/:bookId"
               element={

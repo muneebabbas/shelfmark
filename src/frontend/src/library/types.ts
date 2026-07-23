@@ -33,6 +33,19 @@ export interface BookDetailResponse {
   in_flight: InFlightDownload[];
 }
 
+export interface LibraryBookSummary {
+  book_id: number;
+  title: string | null;
+  author: string | null;
+  cover_url: string | null;
+  formats_on_disk: Array<{ format: string | null; size: string | null }>;
+  added_at: string | null;
+}
+
+export interface LibraryBooksResponse {
+  books: LibraryBookSummary[];
+}
+
 export const latestFilesByFormat = (files: LibraryFile[]): LibraryFile[] => {
   const latest = new Map<string, LibraryFile>();
   for (const file of files) {

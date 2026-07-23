@@ -1,0 +1,204 @@
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+
+import { useDependencyEffect } from '../hooks/useMountEffect';
+import { getLibraryBooks } from '../services/api';
+import { withBasePath } from '../utils/basePath';
+import type { LibraryBookSummary } from './types';
+
+type FileFilter = 'all' | 'with-files' | 'needs-files';
+
+const matchesFilter = (book: LibraryBookSummary, filter: FileFilter): boolean => {
+  if (filter === 'with-files') return book.formats_on_disk.length > 0;
+  if (filter === 'needs-files') return book.formats_on_disk.length === 0;
+  return true;
+};
+
+const Cover = ({ book }: { book: LibraryBookSummary }) => {
+  const [imageFailed, setImageFailed] = useState(false);
+  const initial = (book.title?.trim()[0] ?? '?').toUpperCase();
+
+  if (!book.cover_url || imageFailed) {
+    return (
+      <div className="flex aspect-[2/3] w-full items-center justify-center rounded-lg bg-linear-to-br from-slate-700 to-slate-950 text-4xl font-semibold text-slate-100 shadow-sm">
+        {initial}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={withBasePath(book.cover_url)}
+      alt={`Cover of ${book.title ?? 'untitled book'}`}
+      className="aspect-[2/3] w-full rounded-lg object-cover shadow-sm transition duration-200 group-hover:-translate-y-1 group-hover:shadow-lg"
+      onError={() => setImageFailed(true)}
+    />
+  );
+};
+
+const FormatBadges = ({ formats }: { formats: LibraryBookSummary['formats_on_disk'] }) => {
+  const uniqueFormats = [...new Set(formats.flatMap(({ format }) => (format ? [format] : [])))];
+  if (!uniqueFormats.length) return null;
+
+  return (
+    <div className="flex flex-wrap gap-1">
+      {uniqueFormats.map((format) => (
+        <span
+          key={format}
+          className="rounded bg-(--hover-surface) px-1.5 py-0.5 text-[10px] font-bold tracking-wide"
+        >
+          {format.toUpperCase()}
+        </span>
+      ))}
+    </div>
+  );
+};
+
+export const LibraryPage = () => {
+  const navigate = useNavigate();
+  const [books, setBooks] = useState<LibraryBookSummary[]>([]);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<FileFilter>('all');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await getLibraryBooks();
+      setBooks(response.books);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Failed to load your library');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useDependencyEffect(() => {
+    void load();
+  }, []);
+
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const visibleBooks = books.filter((book) => {
+    const searchText = `${book.title ?? ''} ${book.author ?? ''}`.toLocaleLowerCase();
+    return (
+      matchesFilter(book, filter) && (!normalizedQuery || searchText.includes(normalizedQuery))
+    );
+  });
+  const missingFiles = books.filter((book) => !book.formats_on_disk.length).length;
+
+  return (
+    <section className="pb-16">
+      <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div>
+          <p className="text-xs font-semibold tracking-widest text-violet-600 uppercase dark:text-violet-300">
+            Library
+          </p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-(--text)">Your books</h1>
+          <p className="mt-2 text-sm opacity-65">
+            {books.length} saved {books.length === 1 ? 'work' : 'works'}
+            {missingFiles ? `, ${missingFiles} waiting to be found.` : '.'}
+          </p>
+        </div>
+        <div className="flex flex-col gap-2 sm:items-end">
+          <input
+            aria-label="Search library"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search title or author"
+            className="w-full rounded-md border border-(--border-muted) bg-transparent px-3 py-2 text-sm sm:w-56"
+          />
+          <div className="flex rounded-md border border-(--border-muted) p-0.5 text-xs">
+            {(
+              [
+                ['all', 'All'],
+                ['with-files', 'Has files'],
+                ['needs-files', 'Needs files'],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={filter === value}
+                className={`rounded px-2.5 py-1.5 ${
+                  filter === value ? 'bg-(--hover-surface) font-semibold' : 'opacity-65'
+                }`}
+                onClick={() => setFilter(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {loading && <LibrarySkeleton />}
+      {error && (
+        <div className="rounded-xl border border-(--border-muted) p-6 text-center">
+          <p className="text-sm text-(--text)">{error}</p>
+          <button
+            type="button"
+            className="mt-3 text-sm text-emerald-700 underline"
+            onClick={() => void load()}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+      {!loading && !error && !books.length && (
+        <div className="rounded-xl border border-dashed border-(--border-muted) p-8 text-center">
+          <h2 className="font-semibold text-(--text)">Your library is empty</h2>
+          <p className="mt-2 text-sm opacity-65">
+            Find a book in search, then add it to your library.
+          </p>
+        </div>
+      )}
+      {!loading && !error && books.length > 0 && !visibleBooks.length && (
+        <div className="rounded-xl border border-dashed border-(--border-muted) p-8 text-center text-sm opacity-65">
+          No books match this search and filter.
+        </div>
+      )}
+      {!loading && !error && visibleBooks.length > 0 && (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 lg:grid-cols-5">
+          {visibleBooks.map((book) => (
+            <article key={book.book_id} className="group min-w-0">
+              <Link to={`/library/${book.book_id}`} className="block">
+                <Cover book={book} />
+                <h2 className="mt-3 truncate font-semibold text-(--text)">
+                  {book.title ?? 'Untitled'}
+                </h2>
+                <p className="truncate text-sm opacity-65">{book.author || 'Unknown author'}</p>
+              </Link>
+              <div className="mt-2">
+                {book.formats_on_disk.length ? (
+                  <FormatBadges formats={book.formats_on_disk} />
+                ) : (
+                  <button
+                    type="button"
+                    className="rounded-md border border-violet-500 px-2.5 py-1.5 text-xs font-semibold text-violet-700 dark:text-violet-300"
+                    onClick={() => void navigate(`/library/${book.book_id}?find=true`)}
+                  >
+                    Find this book
+                  </button>
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+};
+
+const LibrarySkeleton = () => (
+  <div className="grid animate-pulse grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 lg:grid-cols-5">
+    {Array.from({ length: 10 }, (_, index) => (
+      <div key={index}>
+        <div className="aspect-[2/3] rounded-lg bg-gray-200 dark:bg-gray-700" />
+        <div className="mt-3 h-4 rounded bg-gray-200 dark:bg-gray-700" />
+        <div className="mt-2 h-3 w-2/3 rounded bg-gray-200 dark:bg-gray-700" />
+      </div>
+    ))}
+  </div>
+);
