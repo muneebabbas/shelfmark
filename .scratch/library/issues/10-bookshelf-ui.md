@@ -29,3 +29,7 @@ Verification: `make frontend-typecheck` passes; the page renders against mock da
 ## Outcome of this ticket
 
 Prototype React code on the feature branch plus a written note in the resolution on what worked and what didn't.
+
+## Comments
+
+- Prototype: `library/10-bookshelf-prototype` at `c0540e1` adds `/library/prototype?variant=A|B|C` with mock data and the real app shell. `npm run typecheck` passes. Awaiting a user-selected direction before resolution.
