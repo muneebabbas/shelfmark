@@ -1,5 +1,5 @@
 Type: prototype
-Status: open
+Status: claimed
 Blocked by: 04, 07
 
 # Bookshelf / library view UI
