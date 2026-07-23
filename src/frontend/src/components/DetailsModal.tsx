@@ -103,6 +103,12 @@ export const DetailsModal = ({
     isMetadata && buttonState.state === 'download' && buttonState.text === 'Get'
       ? 'Find Downloads'
       : buttonState.text;
+  let libraryActionText = 'Add +';
+  if (isAddingToLibrary) {
+    libraryActionText = 'Adding...';
+  } else if (book.in_my_library) {
+    libraryActionText = 'In Library';
+  }
   const downloadButtonClassName = (() => {
     if (buttonState.state === 'blocked') {
       return 'bg-gray-500';
@@ -445,11 +451,7 @@ export const DetailsModal = ({
                             />
                           </svg>
                         )}
-                        {isAddingToLibrary
-                          ? 'Adding...'
-                          : book.in_my_library
-                            ? 'In Library'
-                            : 'Add +'}
+                        {libraryActionText}
                       </button>
                     )}
                     <button

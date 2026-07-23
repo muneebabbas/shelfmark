@@ -21,7 +21,7 @@ interface ResultsSectionProps {
   visible: boolean;
   onDetails: (id: string) => Promise<void>;
   onDownload: (book: Book) => Promise<void>;
-  onGetReleases: (book: Book) => Promise<void>;
+  onAddToLibrary: (book: Book) => Promise<void>;
   getButtonState: (bookId: string) => ButtonStateInfo;
   getUniversalButtonState: (bookId: string) => ButtonStateInfo;
   sortValue: string;
@@ -42,7 +42,7 @@ export const ResultsSection = ({
   visible,
   onDetails,
   onDownload,
-  onGetReleases,
+  onAddToLibrary,
   getButtonState,
   getUniversalButtonState,
   sortValue,
@@ -203,7 +203,7 @@ export const ResultsSection = ({
           books={books}
           onDetails={onDetails}
           onDownload={onDownload}
-          onGetReleases={onGetReleases}
+          onAddToLibrary={onAddToLibrary}
           getButtonState={getButtonState}
           getUniversalButtonState={getUniversalButtonState}
           showSeriesPosition={sortValue === 'series_order'}
@@ -229,7 +229,7 @@ export const ResultsSection = ({
                 book={book}
                 onDetails={onDetails}
                 onDownload={onDownload}
-                onGetReleases={onGetReleases}
+                onAddToLibrary={onAddToLibrary}
                 buttonState={buttonState}
                 animationDelay={animationDelay}
                 showSeriesPosition={sortValue === 'series_order'}
@@ -241,7 +241,7 @@ export const ResultsSection = ({
                 book={book}
                 onDetails={onDetails}
                 onDownload={onDownload}
-                onGetReleases={onGetReleases}
+                onAddToLibrary={onAddToLibrary}
                 buttonState={buttonState}
                 showDetailsButton={!isDesktop}
                 animationDelay={animationDelay}

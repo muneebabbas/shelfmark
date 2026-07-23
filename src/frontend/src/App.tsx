@@ -1123,6 +1123,7 @@ function App() {
         series_name: book.series_name,
         series_position: book.series_position,
         subtitle: book.subtitle,
+        library_book_id: book.book_id ?? undefined,
       };
     },
     [],
@@ -2543,7 +2544,7 @@ function App() {
             visible={hasResults}
             onDetails={handleShowDetails}
             onDownload={handleDownload}
-            onGetReleases={handleGetReleases}
+            onAddToLibrary={handleAddToLibrary}
             getButtonState={getDirectActionButtonState}
             getUniversalButtonState={getUniversalActionButtonState}
             sortValue={visibleResultsSort}
