@@ -437,12 +437,15 @@ def register_library_routes(
             return membership_error
 
         fmt = normalize_optional_text(request.args.get("format"))
+        history_id = normalize_positive_int(request.args.get("history_id"))
         try:
             files = library_service.get_files_on_disk(book_id)
         except _OPERATIONAL_ERRORS as exc:
             return jsonify({"error": str(exc)}), 500
 
         def _matches(row: dict[str, Any]) -> bool:
+            if history_id is not None and normalize_positive_int(row.get("id")) != history_id:
+                return False
             if fmt is None:
                 return True
             row_format = normalize_optional_text(row.get("format"))

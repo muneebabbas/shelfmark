@@ -1,3 +1,4 @@
+import type { BookDetailResponse } from '../library/types';
 import type {
   Book,
   StatusData,
@@ -499,6 +500,51 @@ export const addLibraryBook = async (
       provider_book_id: providerBookId,
     }),
   });
+};
+
+export const getLibraryBook = async (bookId: number): Promise<BookDetailResponse> => {
+  return fetchJSON<BookDetailResponse>(`${API.libraryBooks}/${encodeURIComponent(String(bookId))}`);
+};
+
+export const unlinkLibraryRelease = async (bookId: number, historyId: number): Promise<void> => {
+  await fetchJSON(`${API.libraryBooks}/${bookId}/downloads/${historyId}`, { method: 'DELETE' });
+};
+
+export const sendLibraryBookToKindle = async (
+  bookId: number,
+  format: string,
+): Promise<{ recipient: string; format: string }> => {
+  return fetchJSON(`${API.libraryBooks}/${bookId}/send-to-kindle`, {
+    method: 'POST',
+    body: JSON.stringify({ format }),
+  });
+};
+
+export const downloadLibraryFile = async (
+  bookId: number,
+  params: { format?: string; historyId?: number },
+): Promise<void> => {
+  const query = new URLSearchParams();
+  if (params.format) query.set('format', params.format);
+  if (params.historyId) query.set('history_id', String(params.historyId));
+  const response = await fetch(`${API.libraryBooks}/${bookId}/download?${query.toString()}`, {
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    const payload: unknown = await response.json().catch(() => null);
+    throw new Error(
+      isRecord(payload) && typeof payload.error === 'string'
+        ? payload.error
+        : 'Failed to download file',
+    );
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = '';
+  link.click();
+  URL.revokeObjectURL(url);
 };
 
 // Download a specific release (from ReleaseModal)

@@ -281,6 +281,7 @@ export interface AppConfig {
   default_release_source?: string; // Default tab in ReleaseModal (e.g., 'direct_download')
   default_release_source_audiobook?: string; // Default tab in ReleaseModal for audiobooks
   show_release_source_links: boolean;
+  library_auto_find_releases: boolean;
   show_combined_selector: boolean;
   force_combined_search: boolean;
   books_output_mode: BooksOutputMode;
