@@ -24,10 +24,9 @@ A build-ready MVP specification for a library-first Shelfmark: persistent respon
 - [Specify the simplified settings surface](issues/03-specify-simplified-settings-surface.md) — Retain the admin settings shell and instance controls; replace per-user overrides with one explicit self-settings pane, while admins own account access and Library Capability.
 - [Define request lifecycle and ownership](issues/08-define-request-lifecycle-and-ownership.md) — Requests exist only while a Book has no Files; they remain pending through a shared download and fulfil atomically when Files become available.
 - [Design the polished book-detail experience](issues/04-design-polished-book-detail-experience.md) — Keep a traditional editorial-first detail page, with latest Files by format by default and multi-File releases plus operational actions in an advanced section.
+- [Design Activity as the request fulfilment experience](issues/05-design-activity-request-fulfilment-experience.md) — Keep Activity as the stateful drawer: grouped Book work drives admin fulfilment, while request-only users see only their own request history.
 
 ## Not yet specified
-
-- The interaction and visual details that emerge from Activity work.
 
 ## Out of scope
 
