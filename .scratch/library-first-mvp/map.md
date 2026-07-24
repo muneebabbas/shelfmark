@@ -21,10 +21,10 @@ A build-ready MVP specification for a library-first Shelfmark: persistent respon
 
 - [Reconcile request policy with library-first user capabilities](issues/01-reconcile-request-policy-with-user-capabilities.md) — Replace request-policy settings with an admin-managed two-value Library Capability; book-level Requests are explicit, Book-identified, and shared fulfilment links Files to every requester.
 - [Design the persistent library app shell](issues/02-design-persistent-library-app-shell.md) — Keep the existing Activity sidebar; add a persistent Library/Add New/Settings drawer that becomes a top-left-menu drawer on narrow screens.
+- [Specify the simplified settings surface](issues/03-specify-simplified-settings-surface.md) — Retain the admin settings shell and instance controls; replace per-user overrides with one explicit self-settings pane, while admins own account access and Library Capability.
 
 ## Not yet specified
 
-- Exact settings and data deletion boundaries after the retained user/admin settings contract is settled.
 - The interaction and visual details that emerge from Activity and book-detail work.
 
 ## Out of scope
