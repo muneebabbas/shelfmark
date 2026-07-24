@@ -1,5 +1,5 @@
 Type: prototype
-Status: parked
+Status: resolved
 Blocked by: 04, 06, 07
 
 # Author browse MVP (Hardcover author endpoint, suggestions only)
@@ -37,3 +37,7 @@ Prototype React code on the feature branch. After this ticket, the map is done â
 ## Comments
 
 - Parked for now at the user's request. This is deferred rather than ruled out of scope.
+
+## Answer
+
+Author browse is deferred completely and is outside this Library map's MVP destination. It is not a prerequisite for the library, book-detail, or search-to-library workflow. A future effort may chart it from scratch if it becomes a priority.
