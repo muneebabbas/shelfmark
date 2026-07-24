@@ -18,7 +18,7 @@ A user's **Library Capability** is the administrator-assigned access level for t
 
 ## Request
 
-A **Request** is a request-only user's explicit request to make one Book available in their Library. It belongs to the requester and the canonical Book; adding a Book to a Library does not create a Request. A fulfilled Request records the release selected by an admin. One selected release fulfils all pending Requests for that same Book and links its Files to each requester when the Download finalizes.
+A **Request** is a request-only user's explicit signal that one Book in their Library has no completed Files available. It belongs to the requester and the canonical Book; adding a Book with completed Files creates no Request. A Request is `pending`, `fulfilled`, `rejected`, or `cancelled`; `fulfilled` means Files are available, not that an admin has selected a release. One selected release fulfils all still-pending Requests for that same Book and links its Files to each requester when the Download finalizes. Any path that makes Files available fulfils the pending Requests for that Book. A pending Request may be cancelled without affecting a shared Download.
 
 ## File / Download
 

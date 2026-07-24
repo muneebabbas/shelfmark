@@ -22,6 +22,7 @@ A build-ready MVP specification for a library-first Shelfmark: persistent respon
 - [Reconcile request policy with library-first user capabilities](issues/01-reconcile-request-policy-with-user-capabilities.md) — Replace request-policy settings with an admin-managed two-value Library Capability; book-level Requests are explicit, Book-identified, and shared fulfilment links Files to every requester.
 - [Design the persistent library app shell](issues/02-design-persistent-library-app-shell.md) — Keep the existing Activity sidebar; add a persistent Library/Add New/Settings drawer that becomes a top-left-menu drawer on narrow screens.
 - [Specify the simplified settings surface](issues/03-specify-simplified-settings-surface.md) — Retain the admin settings shell and instance controls; replace per-user overrides with one explicit self-settings pane, while admins own account access and Library Capability.
+- [Define request lifecycle and ownership](issues/08-define-request-lifecycle-and-ownership.md) — Requests exist only while a Book has no Files; they remain pending through a shared download and fulfil atomically when Files become available.
 
 ## Not yet specified
 
@@ -31,3 +32,4 @@ A build-ready MVP specification for a library-first Shelfmark: persistent respon
 
 - **Author browse.** Deferred completely from the preceding Library map; it needs a fresh effort if reprioritized.
 - **Implementation.** This planning map ends with a build-ready specification, not feature branches or production changes.
+- **Release-quality reporting and re-requesting another release.** Deferred from this MVP; Requests solve Book availability, not file-quality feedback or release replacement.
