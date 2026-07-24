@@ -4,7 +4,7 @@
 
 Library membership (per #01 / ADR 0001) is Book-level — `user_library(user_id, book_id)` says "this user tracks this Book". Files (`download_history` rows) are global per-instance — a downloaded file is shared, not copied per user. The question this ADR answers: how does the library decide which files a user sees for a Book they've added, and which files they've unlinked?
 
-We add a separate `user_downloads(user_id, history_id)` link table as the per-user-per-release link. A user's book-detail query JOINs `download_history` to `user_downloads` for that user; multiple users can link the same `download_history` row (an admin downloads on behalf, or any user explicitly grabs a competing release). Unlinking a release is `DELETE FROM user_downloads WHERE user_id=? AND history_id=?` — hard delete of the link; the file on disk and the `download_history` row are untouched. Files with zero `user_downloads` entries and not in-flight are Orphans (admin cleanup, deferred).
+We add a separate `user_downloads(user_id, history_id)` link table as the per-user-per-release link. A user's book-detail query JOINs `download_history` to `user_downloads` for that user; multiple users can link the same `download_history` row (a shared Request fulfilment links it to every requester, or any user explicitly grabs a competing release). Unlinking a release is `DELETE FROM user_downloads WHERE user_id=? AND history_id=?` — hard delete of the link; the file on disk and the `download_history` row are untouched. Files with zero `user_downloads` entries and not in-flight are Orphans (admin cleanup, deferred).
 
 ## Rejected alternatives
 

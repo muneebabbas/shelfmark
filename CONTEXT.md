@@ -12,6 +12,14 @@ A Book row is a **denormalized snapshot** of the provider's `BookMetadata` at ad
 
 A user's **Library** is the set of Book rows that user has chosen to track — a per-user link onto Books (`user_library`, PK `(user_id, book_id)`, both FKs `ON DELETE CASCADE`). Library membership is orthogonal to files on disk: a Book can be in a user's Library with zero files anywhere (wishlist semantics). Removing a Book from a Library is a hard `DELETE` of the link row — no `removed_at`, no tombstone. Future "restore removed" UX is a fresh ticket that would introduce soft-delete then.
 
+## Library Capability
+
+A user's **Library Capability** is the administrator-assigned access level for the library workflow. A **download-capable user** may search releases and queue Downloads. A **request-only user** may add Books to their Library and submit book-level Requests, but cannot search or select releases. Admin status is a separate privilege that permits administrative operations and does not form a third Library Capability.
+
+## Request
+
+A **Request** is a request-only user's explicit request to make one Book available in their Library. It belongs to the requester and the canonical Book; adding a Book to a Library does not create a Request. A fulfilled Request records the release selected by an admin. One selected release fulfils all pending Requests for that same Book and links its Files to each requester when the Download finalizes.
+
 ## File / Download
 
 A **File** is a concrete downloaded artifact — one `download_history` row with its own `download_path`, `format`, and `size`. Files are global (per-instance, not per-user); the Library merely surfaces them. Adding to the Library never creates a File; downloading never creates a Library entry.
@@ -22,7 +30,7 @@ A single download activity (one qbittorrent/usenet job) may produce **multiple F
 
 A user's library surfaces a File via the **`user_downloads(user_id, history_id)` link table** — the load-bearing column for file visibility in a user's library. Multiple users can link the same `download_history` row. Unlinking a release from a user's library is a hard `DELETE` of the `user_downloads` links for **every file row in the release** (looked up by `task_id`) — releases are unlinked atomically. The File and its `download_history` row are untouched. Library file serving gates on `user_library` Book-membership (any user with the Book in their library can download any of its files), not on `download_history.user_id`. The `download_history.user_id` column stays as an audit field for "the auth identity who triggered the download" — not exposed via the library API.
 
-`user_downloads` links are created at **finalize time** (when N file rows are concrete), not at queue time: one `user_downloads` row per file row, for the triggering user. An in-flight release has no `user_downloads` links yet; unlinking mid-flight returns 404 (nothing linked yet).
+`user_downloads` links are created at **finalize time** (when N file rows are concrete), not at queue time: one row per File for each Download recipient. A direct Download has its triggering user as the recipient; a shared Request fulfilment has every requester with a fulfilled Request for the Book. An in-flight release has no `user_downloads` links yet; unlinking mid-flight returns 404 (nothing linked yet).
 
 ## Orphan
 
