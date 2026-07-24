@@ -1,4 +1,6 @@
-Status: ready-for-agent
+Status: wontfix
+
+> Closed for this planning-only map. Recreate or move this implementation work into the post-spec implementation effort.
 
 # Implement the polished book-detail experience
 

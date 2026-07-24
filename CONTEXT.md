@@ -20,6 +20,10 @@ A user's **Library Capability** is the administrator-assigned access level for t
 
 A **Request** is a request-only user's explicit signal that one Book in their Library has no completed Files available. It belongs to the requester and the canonical Book; adding a Book with completed Files creates no Request. A Request is `pending`, `fulfilled`, `rejected`, or `cancelled`; `fulfilled` means Files are available, not that an admin has selected a release. One selected release fulfils all still-pending Requests for that same Book and links its Files to each requester when the Download finalizes. Any path that makes Files available fulfils the pending Requests for that Book. A pending Request may be cancelled without affecting a shared Download.
 
+## Notification
+
+A **Notification** communicates a library event. Personal Notifications are sent to a User through one selected email or Apprise transport. Administrator Notifications are instance-level operational alerts sent through administrator-configured email or Apprise transports; they are separate from personal Notifications.
+
 ## File / Download
 
 A **File** is a concrete downloaded artifact — one `download_history` row with its own `download_path`, `format`, and `size`. Files are global (per-instance, not per-user); the Library merely surfaces them. Adding to the Library never creates a File; downloading never creates a Library entry.
