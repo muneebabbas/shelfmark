@@ -6,12 +6,14 @@ import { useDependencyEffect } from '../hooks/useMountEffect';
 import {
   downloadLibraryFile,
   getLibraryBook,
+  getMetadataBookInfo,
   isApiResponseError,
   sendLibraryBookToKindle,
   unlinkLibraryRelease,
 } from '../services/api';
 import type { Book } from '../types';
 import { withBasePath } from '../utils/basePath';
+import { BookDetailPrototype } from './BookDetailPrototype';
 import {
   formatFileSize,
   groupFilesByRelease,
@@ -58,7 +60,10 @@ export const BookDetailPage = ({
   const [loading, setLoading] = useState(true);
   const [autoOpenedFor, setAutoOpenedFor] = useState<number | null>(null);
   const [kindleFormat, setKindleFormat] = useState('epub');
+  const [metadataBook, setMetadataBook] = useState<Book | null>(null);
   const findRequested = new URLSearchParams(location.search).get('find') === 'true';
+  const prototypeEnabled =
+    import.meta.env.DEV && new URLSearchParams(location.search).get('prototype') === 'detail';
 
   const load = useCallback(async () => {
     if (!Number.isInteger(bookId) || bookId < 1) {
@@ -97,6 +102,16 @@ export const BookDetailPage = ({
       onFindReleases(toReleaseBook(book));
     }
   }, [autoFindReleases, autoOpenedFor, book, findRequested, onFindReleases]);
+
+  useDependencyEffect(() => {
+    if (!prototypeEnabled || !book?.metadata_provider || !book.provider_book_id) {
+      setMetadataBook(null);
+      return;
+    }
+    void getMetadataBookInfo(book.metadata_provider, book.provider_book_id)
+      .then(setMetadataBook)
+      .catch(() => setMetadataBook(null));
+  }, [book?.metadata_provider, book?.provider_book_id, prototypeEnabled]);
 
   if (loading) return <BookDetailSkeleton />;
   if (error) {
@@ -140,6 +155,34 @@ export const BookDetailPage = ({
       onShowToast(caught instanceof Error ? caught.message : 'Action failed', 'error');
     }
   };
+
+  if (prototypeEnabled) {
+    return (
+      <BookDetailPrototype
+        book={book}
+        metadataBook={metadataBook}
+        onFindReleases={findReleases}
+        onDownload={(file) =>
+          void mutate(
+            () => downloadLibraryFile(book.book_id, { historyId: file.history_id }),
+            'Download started',
+          )
+        }
+        onUnlinkRelease={(file) =>
+          void mutate(() => unlinkLibraryRelease(book.book_id, file.history_id), 'Release unlinked')
+        }
+        onSendToKindle={() => {
+          if (selectedKindleFormat)
+            void mutate(async () => {
+              await sendLibraryBookToKindle(book.book_id, selectedKindleFormat);
+            }, 'Sent to Kindle');
+        }}
+        kindleFormats={kindleFormats}
+        selectedKindleFormat={selectedKindleFormat}
+        onKindleFormatChange={setKindleFormat}
+      />
+    );
+  }
 
   return (
     <section className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
