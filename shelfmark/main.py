@@ -1145,8 +1145,13 @@ def api_health() -> Response | tuple[Response, int]:
     response: dict[str, object] = {"status": "ok"}
 
     # Report degraded features
+    degraded: dict[str, str] = {}
     if not backend.WEBSOCKET_AVAILABLE:
-        response["degraded"] = {"websocket": "WebSocket unavailable - real-time updates disabled"}
+        degraded["websocket"] = "WebSocket unavailable - real-time updates disabled"
+    if not backend.is_running():
+        degraded["downloads"] = "Download coordinator is not running"
+    if degraded:
+        response["degraded"] = degraded
 
     return jsonify(response)
 

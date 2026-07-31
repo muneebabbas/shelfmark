@@ -977,6 +977,12 @@ _coordinator_thread: threading.Thread | None = None
 _coordinator_lock = Lock()
 
 
+def is_running() -> bool:
+    """Whether this process has a live download coordinator."""
+    with _coordinator_lock:
+        return _coordinator_thread is not None and _coordinator_thread.is_alive()
+
+
 def start() -> None:
     """Start the download coordinator thread. Safe to call multiple times."""
     global _coordinator_thread
