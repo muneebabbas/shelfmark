@@ -53,6 +53,29 @@ def test_enqueue_existing_logs_queue_hook_failures():
     assert str(args[2]) == "boom"
 
 
+def test_terminal_status_hook_failure_does_not_interrupt_completion():
+    queue = BookQueue()
+    task = _make_task("complete-with-broken-hook")
+    assert queue.add(task) is True
+    assert queue.get_next() is not None
+
+    def broken_hook(task_id: str, status: QueueStatus, task: DownloadTask) -> None:
+        raise AssertionError(f"{task_id} unexpectedly reached {status.value}: {task.title}")
+
+    queue.set_terminal_status_hook(broken_hook)
+
+    with patch("shelfmark.core.queue.logger.exception") as mock_exception:
+        queue.update_status(task.task_id, QueueStatus.COMPLETE)
+
+    assert queue.get_task_status(task.task_id) == QueueStatus.COMPLETE
+    assert queue.get_active_downloads() == []
+    mock_exception.assert_called_once_with(
+        "Terminal status hook failed for task %s (%s)",
+        task.task_id,
+        QueueStatus.COMPLETE.value,
+    )
+
+
 def test_remove_completed_task_allows_a_deleted_release_to_be_queued_again():
     queue = BookQueue()
     assert queue.add(_make_task("completed")) is True

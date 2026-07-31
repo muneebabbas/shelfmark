@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import ANY, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -50,18 +50,18 @@ def test_concurrent_download_loop_logs_and_recovers_after_loop_error(monkeypatch
     mock_queue = MagicMock()
     mock_queue.get_next.side_effect = fake_get_next
 
-    error_trace = MagicMock()
+    exception = MagicMock()
 
     monkeypatch.setattr(orchestrator, "book_queue", mock_queue)
     monkeypatch.setattr(orchestrator, "ThreadPoolExecutor", _FakeExecutor)
     monkeypatch.setattr(orchestrator.time, "sleep", fake_sleep)
-    monkeypatch.setattr(orchestrator.logger, "error_trace", error_trace)
+    monkeypatch.setattr(orchestrator.logger, "exception", exception)
 
     with pytest.raises(_StopLoop):
         orchestrator.concurrent_download_loop()
 
     assert mock_queue.get_next.call_count == 2
-    error_trace.assert_called_once_with("Download coordinator loop error: %s", ANY)
+    exception.assert_called_once_with("Download coordinator loop error")
     assert sleep_delays == [
         orchestrator.COORDINATOR_LOOP_ERROR_RETRY_DELAY,
         orchestrator.config.MAIN_LOOP_SLEEP_TIME,
@@ -102,7 +102,7 @@ def test_concurrent_download_loop_recovers_and_processes_task_after_transient_lo
             )
 
     queue = FlakyQueue()
-    error_trace = MagicMock()
+    exception = MagicMock()
 
     monkeypatch.setattr(orchestrator, "book_queue", queue)
     monkeypatch.setattr(
@@ -110,7 +110,7 @@ def test_concurrent_download_loop_recovers_and_processes_task_after_transient_lo
         "_process_single_download",
         lambda task_id, cancel_flag: processed.set(),
     )
-    monkeypatch.setattr(orchestrator.logger, "error_trace", error_trace)
+    monkeypatch.setattr(orchestrator.logger, "exception", exception)
     monkeypatch.setattr(orchestrator, "COORDINATOR_LOOP_ERROR_RETRY_DELAY", 0.01)
     monkeypatch.setattr(orchestrator.config, "MAX_CONCURRENT_DOWNLOADS", 1, raising=False)
     monkeypatch.setattr(orchestrator.config, "MAIN_LOOP_SLEEP_TIME", 0.01, raising=False)
@@ -129,7 +129,96 @@ def test_concurrent_download_loop_recovers_and_processes_task_after_transient_lo
 
     assert thread.is_alive() is False
     assert queue.calls >= 3
-    error_trace.assert_called_once_with("Download coordinator loop error: %s", ANY)
+    exception.assert_called_once_with("Download coordinator loop error")
+
+
+def test_concurrent_download_loop_recovers_after_unexpected_exception(monkeypatch):
+    import threading
+
+    import shelfmark.download.orchestrator as orchestrator
+
+    processed = threading.Event()
+
+    class FlakyQueue:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def get_next(self):
+            self.calls += 1
+            if self.calls == 1:
+                raise AssertionError("terminal callback invariant failed")
+            if self.calls == 2:
+                return ("task-1", threading.Event())
+            if processed.is_set():
+                raise _StopCoordinator()
+            return None
+
+        def cancel_download(self, task_id: str) -> None:  # pragma: no cover - unused
+            raise AssertionError(f"cancel_download unexpectedly called for {task_id}")
+
+        def update_status_message(
+            self, task_id: str, message: str
+        ) -> None:  # pragma: no cover - unused
+            raise AssertionError(
+                f"update_status_message unexpectedly called for {task_id}: {message}"
+            )
+
+    queue = FlakyQueue()
+    exception = MagicMock()
+
+    monkeypatch.setattr(orchestrator, "book_queue", queue)
+    monkeypatch.setattr(
+        orchestrator,
+        "_process_single_download",
+        lambda task_id, cancel_flag: processed.set(),
+    )
+    monkeypatch.setattr(orchestrator.logger, "exception", exception)
+    monkeypatch.setattr(orchestrator, "COORDINATOR_LOOP_ERROR_RETRY_DELAY", 0.01)
+    monkeypatch.setattr(orchestrator.config, "MAX_CONCURRENT_DOWNLOADS", 1, raising=False)
+    monkeypatch.setattr(orchestrator.config, "MAIN_LOOP_SLEEP_TIME", 0.01, raising=False)
+
+    def run_loop() -> None:
+        try:
+            orchestrator.concurrent_download_loop()
+        except _StopCoordinator:
+            pass
+
+    thread = threading.Thread(target=run_loop, daemon=True, name="TestDownloadCoordinator")
+    thread.start()
+
+    assert processed.wait(timeout=1.0) is True
+    thread.join(timeout=1.0)
+
+    assert thread.is_alive() is False
+    assert queue.calls >= 3
+    exception.assert_called_once_with("Download coordinator loop error")
+
+
+def test_queue_release_restarts_a_dead_coordinator(monkeypatch):
+    import shelfmark.download.orchestrator as orchestrator
+
+    queue = MagicMock()
+    queue.add.return_value = True
+    handler = MagicMock()
+    handler.build_retry_resolution_fields.return_value = {}
+    start = MagicMock()
+
+    monkeypatch.setattr(orchestrator, "book_queue", queue)
+    monkeypatch.setattr(orchestrator, "get_handler", lambda _source: handler)
+    monkeypatch.setattr(orchestrator, "_source_unavailable_message", lambda _source: None)
+    monkeypatch.setattr(orchestrator, "start", start)
+    monkeypatch.setattr(orchestrator, "ws_manager", None)
+
+    success, error = orchestrator.queue_release(
+        {
+            "source": "direct_download",
+            "source_id": "release-1",
+            "title": "Example Title",
+        }
+    )
+
+    assert (success, error) == (True, None)
+    start.assert_called_once_with()
 
 
 def test_start_replaces_dead_coordinator_thread(monkeypatch):

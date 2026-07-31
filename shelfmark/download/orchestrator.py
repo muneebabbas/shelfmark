@@ -248,6 +248,8 @@ def queue_release(
             logger.info("Release already in queue: %s", task.title)
             return False, "Release is already in the download queue"
 
+        # A prior coordinator failure must not strand newly accepted work.
+        start()
         logger.info("Release queued with priority %s: %s", priority, task.title)
 
         # Broadcast status update via WebSocket
@@ -466,6 +468,7 @@ def retry_persisted_download(
     if not book_queue.add(task):
         return False, "Failed to requeue download"
 
+    start()
     book_queue.update_status_message(task.task_id, "Retrying now")
 
     if ws_manager:
@@ -783,6 +786,7 @@ def retry_download(book_id: str) -> tuple[bool, str | None]:
     if not book_queue.enqueue_existing(book_id, priority=-10):
         return False, "Failed to requeue download"
 
+    start()
     book_queue.update_status_message(book_id, "Retrying now")
 
     if ws_manager:
@@ -960,8 +964,11 @@ def concurrent_download_loop() -> None:
 
                 # Brief sleep to prevent busy waiting
                 time.sleep(main_loop_sleep_time)
-            except (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError) as e:
-                logger.error_trace("Download coordinator loop error: %s", e)
+            except Exception:
+                # Keep serving queued work after an unexpected coordinator failure.
+                # Deliberately leave BaseException alone for process shutdown and
+                # test-control sentinels.
+                logger.exception("Download coordinator loop error")
                 time.sleep(COORDINATOR_LOOP_ERROR_RETRY_DELAY)
 
 

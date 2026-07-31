@@ -169,7 +169,16 @@ class BookQueue:
                 self._cancel_flags.pop(book_id, None)
 
         if hook is not None and hook_task is not None:
-            hook(book_id, status, hook_task)
+            try:
+                hook(book_id, status, hook_task)
+            except Exception:
+                # History, notification, and WebSocket hooks must not be able to
+                # strand the queue after its terminal state has been committed.
+                logger.exception(
+                    "Terminal status hook failed for task %s (%s)",
+                    book_id,
+                    status.value,
+                )
 
     def update_download_path(self, task_id: str, download_path: str) -> None:
         """Update the download path of a task in the queue."""
