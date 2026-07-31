@@ -1152,6 +1152,9 @@ def api_health() -> Response | tuple[Response, int]:
         degraded["downloads"] = "Download coordinator is not running"
     if degraded:
         response["degraded"] = degraded
+    if not backend.is_running():
+        response["status"] = "degraded"
+        return jsonify(response), 503
 
     return jsonify(response)
 

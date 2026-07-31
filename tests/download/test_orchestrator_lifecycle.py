@@ -163,6 +163,39 @@ def test_queue_release_restarts_a_dead_coordinator(monkeypatch):
     start.assert_called_once_with()
 
 
+def test_concurrent_download_loop_marks_task_error_when_submission_fails(monkeypatch):
+    import threading
+
+    import shelfmark.download.orchestrator as orchestrator
+    from shelfmark.core.models import DownloadTask, QueueStatus
+
+    class RejectingExecutor(_FakeExecutor):
+        def submit(self, *args, **kwargs):
+            raise RuntimeError("worker pool unavailable")
+
+    task = DownloadTask(task_id="task-1", source="direct_download", title="Example Title")
+    queue = MagicMock()
+    queue.get_next.side_effect = [(task.task_id, threading.Event()), None]
+    queue.get_task.return_value = task
+    exception = MagicMock()
+
+    def stop_loop(_delay: float) -> None:
+        raise _StopLoop()
+
+    monkeypatch.setattr(orchestrator, "book_queue", queue)
+    monkeypatch.setattr(orchestrator, "ThreadPoolExecutor", RejectingExecutor)
+    monkeypatch.setattr(orchestrator.time, "sleep", stop_loop)
+    monkeypatch.setattr(orchestrator.logger, "exception", exception)
+    monkeypatch.setattr(orchestrator.config, "MAX_CONCURRENT_DOWNLOADS", 1, raising=False)
+
+    with pytest.raises(_StopLoop):
+        orchestrator.concurrent_download_loop()
+
+    assert task.last_error_type == "RuntimeError"
+    queue.update_status.assert_called_once_with(task.task_id, QueueStatus.ERROR)
+    exception.assert_called_once_with("Failed to submit download task %s", task.task_id)
+
+
 def test_is_running_reports_coordinator_liveness(monkeypatch):
     import shelfmark.download.orchestrator as orchestrator
 

@@ -244,12 +244,12 @@ def queue_release(
             **retry_resolution_fields,
         )
 
+        # Recover a dead coordinator before accepting work it must consume.
+        start()
         if not book_queue.add(task):
             logger.info("Release already in queue: %s", task.title)
             return False, "Release is already in the download queue"
 
-        # A prior coordinator failure must not strand newly accepted work.
-        start()
         logger.info("Release queued with priority %s: %s", priority, task.title)
 
         # Broadcast status update via WebSocket
@@ -465,10 +465,10 @@ def retry_persisted_download(
     task.status_message = None
     _clear_task_error_state(task)
 
+    start()
     if not book_queue.add(task):
         return False, "Failed to requeue download"
 
-    start()
     book_queue.update_status_message(task.task_id, "Retrying now")
 
     if ws_manager:
@@ -783,10 +783,10 @@ def retry_download(book_id: str) -> tuple[bool, str | None]:
     task.last_error_type = None
     task.priority = -10
 
+    start()
     if not book_queue.enqueue_existing(book_id, priority=-10):
         return False, "Failed to requeue download"
 
-    start()
     book_queue.update_status_message(book_id, "Retrying now")
 
     if ws_manager:
@@ -958,8 +958,21 @@ def concurrent_download_loop() -> None:
 
                     task_id, cancel_flag = next_download
 
-                    # Submit download job to thread pool
-                    future = executor.submit(_process_single_download, task_id, cancel_flag)
+                    # Submit download job to thread pool. get_next() has already
+                    # removed the task, so make a submission failure visible.
+                    try:
+                        future = executor.submit(_process_single_download, task_id, cancel_flag)
+                    except Exception as exc:
+                        logger.exception("Failed to submit download task %s", task_id)
+                        task = book_queue.get_task(task_id)
+                        if task:
+                            _capture_task_error(
+                                task,
+                                message=_format_download_exception_message(exc),
+                                exc_type=type(exc).__name__,
+                            )
+                        _finalize_download_failure(task_id)
+                        continue
                     active_futures[future] = (task_id, cancel_flag)
 
                 # Brief sleep to prevent busy waiting
