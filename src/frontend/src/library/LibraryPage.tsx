@@ -5,6 +5,11 @@ import { useSocket } from '../contexts/SocketContext';
 import { useDependencyEffect } from '../hooks/useMountEffect';
 import { getLibraryBooks } from '../services/api';
 import { withBasePath } from '../utils/basePath';
+import {
+  getPaginationPrototypeVariant,
+  PaginationPrototype,
+  PaginationPrototypeSwitcher,
+} from './LibraryPaginationPrototype';
 import type { LibraryBookSummary } from './types';
 
 type FileFilter = 'all' | 'with-files' | 'needs-files';
@@ -90,6 +95,7 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
   const filter = getFileFilter(searchParams.get('availability'));
   const scope = getScope(searchParams.get('scope'), isAdmin);
   const page = getPage(searchParams.get('page'));
+  const prototypeVariant = getPaginationPrototypeVariant(searchParams.get('variant'));
   const [searchInput, setSearchInput] = useState(query);
   const pageCount = Math.ceil(total / PAGE_SIZE);
 
@@ -104,6 +110,8 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
   };
 
   const setPage = (nextPage: number) => updateParam('page', String(nextPage), '1', false);
+  const setPrototypeVariant = (variant: string) =>
+    updateParam('variant', variant, 'segmented', false);
 
   useDependencyEffect(() => {
     setSearchInput(query);
@@ -295,33 +303,16 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
         </div>
       )}
       {!loading && !error && pageCount > 1 && (
-        <nav
-          className="mt-10 flex items-center justify-center gap-1 text-sm"
-          aria-label="Library pages"
-        >
-          <button type="button" disabled={page === 1} onClick={() => setPage(page - 1)}>
-            Previous
-          </button>
-          {pages.map((item, index) =>
-            item === 'ellipsis' ? (
-              <span key={`ellipsis-${pages[index + 1]}`} className="px-2">
-                ...
-              </span>
-            ) : (
-              <button
-                key={item}
-                type="button"
-                aria-current={item === page ? 'page' : undefined}
-                onClick={() => setPage(item)}
-              >
-                {item}
-              </button>
-            ),
-          )}
-          <button type="button" disabled={page === pageCount} onClick={() => setPage(page + 1)}>
-            Next
-          </button>
-        </nav>
+        <PaginationPrototype
+          currentPage={page}
+          pageCount={pageCount}
+          pages={pages}
+          setPage={setPage}
+          variant={prototypeVariant}
+        />
+      )}
+      {import.meta.env.DEV && (
+        <PaginationPrototypeSwitcher variant={prototypeVariant} setVariant={setPrototypeVariant} />
       )}
     </section>
   );
