@@ -32,15 +32,9 @@ Admins can configure per-user settings by editing a user in the user management 
 
 There are three categories of per-user settings:
 
-### Delivery Preferences
+### Delivery
 
-Override where a user's downloads are sent. Options depend on the global output mode configuration:
-
-- **Output mode** — Folder, Email (SMTP), or BookLore (API)
-- **Destination** — A custom folder path for this user's ebook downloads
-- **Audiobook destination** — A custom folder path for audiobook downloads
-- **BookLore library/path** — Per-user BookLore target (when using BookLore output mode)
-- **Email recipient** — Per-user email address (when using Email output mode)
+- **Send-to-Kindle recipient** — A per-user email address used when sending a library File to Kindle. Any email recipient address is allowed.
 
 ### Notifications
 
