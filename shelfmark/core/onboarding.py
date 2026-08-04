@@ -661,8 +661,8 @@ def save_onboarding_settings(values: dict[str, Any]) -> dict[str, Any]:
         except ImportError as e:
             logger.debug("Could not refresh config after onboarding: %s", e)
 
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to save onboarding settings")
-        return {"success": False, "message": str(e)}
+        return {"success": False, "message": "Failed to save onboarding settings"}
     else:
         return {"success": True, "message": "Onboarding complete!"}
