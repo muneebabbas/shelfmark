@@ -11,6 +11,7 @@ from shelfmark.core.member_matcher import (
     BookEvidence,
     MemberEvidence,
     _parse_metadata_xml,
+    auto_selections,
     book_evidence_from_snapshot,
     decide,
     evaluate,
@@ -327,3 +328,40 @@ def test_book_evidence_from_snapshot() -> None:
         "metadata_json": {},
     }
     assert book_evidence_from_snapshot(snapshot) == BOOK_DUNE
+
+
+# ------------------------------------------------------------- auto-selections
+
+
+def test_auto_selections_selects_only_exact_matches_of_collection() -> None:
+    members = [
+        {"id": 1, "relative_path": "epub/Dune 01 Dune - Frank Herbert.epub", "format": "epub"},
+        {"id": 2, "relative_path": "epub/Dune 02 Dune Messiah - Frank Herbert.epub", "format": "epub"},
+        {"id": 3, "relative_path": "epub/Dune 03 Children of Dune - Frank Herbert.epub", "format": "epub"},
+        {"id": 4, "relative_path": "Mobi/Dune 01 Dune - Frank Herbert.mobi", "format": "mobi"},
+    ]
+    selections = auto_selections(BOOK_DUNE, members)
+    assert [s["source_member_id"] for s in selections] == [1, 4]
+    for selection in selections:
+        assert selection["evidence"]["match"] == "exact"
+        assert selection["evidence"]["matcher"] == MATCHER_VERSION
+        assert selection["evidence"]["reason"]
+
+
+def test_auto_selections_empty_when_nothing_matches() -> None:
+    members = [
+        {"id": 1, "relative_path": "Dune 02 Dune Messiah - Frank Herbert.epub", "format": "epub"},
+        {"id": 2, "relative_path": "Heros of Dune 01 Paul of Dune - Brian Herbert.epub", "format": "epub"},
+    ]
+    assert auto_selections(BOOK_DUNE, members) == []
+
+
+def test_auto_selections_uses_embedded_evidence_when_provided() -> None:
+    embedded = _parse_metadata_xml(SERIES_PREFIXED_OPF)
+    members = [
+        {"id": 1, "relative_path": "Dune 01 Dune - Frank Herbert.epub", "format": "epub"},
+    ]
+    selections = auto_selections(
+        BOOK_DUNE, members, get_embedded=lambda _member: embedded
+    )
+    assert [s["source_member_id"] for s in selections] == [1]

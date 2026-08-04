@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping, Sequence
 
 from defusedxml import ElementTree as DefusedElementTree
 
@@ -325,3 +325,35 @@ def evaluate(
             "series_position": evidence.series_position,
         },
     }
+
+
+def auto_selections(
+    book: BookEvidence,
+    members: Sequence[Mapping[str, Any]],
+    *,
+    get_embedded: Callable[[Mapping[str, Any]], MemberEvidence | None] | None = None,
+) -> list[dict[str, Any]]:
+    """Return per-member selection evidence for every member that matches ``book``.
+
+    ``members`` are ``source_release_members`` rows (``id``, ``relative_path``,
+    ``format``). ``get_embedded`` optionally provides embedded EPUB evidence for a
+    member given its row. Each returned selection carries the matcher version and
+    decision reason for the immutable activity evidence snapshot.
+    """
+    selections: list[dict[str, Any]] = []
+    for member in members:
+        embedded = get_embedded(member) if get_embedded else None
+        decision = evaluate(book, member["relative_path"], embedded=embedded)
+        if not decision["auto_select"]:
+            continue
+        selections.append(
+            {
+                "source_member_id": member["id"],
+                "evidence": {
+                    "match": "exact",
+                    "matcher": decision["matcher"],
+                    "reason": decision["reason"],
+                },
+            }
+        )
+    return selections
