@@ -286,6 +286,33 @@ class ImportActivityService:
         finally:
             conn.close()
 
+    def relative_paths_by_output_path(self, *, import_activity_ids: list[int]) -> dict[str, str]:
+        """Map planned output paths to the original path inside the torrent.
+
+        For completed imports, each transferred artifact is a source member
+        selected in an import activity. Its planned output path (which becomes
+        the recorded ``download_history.download_path``) maps back to the
+        member's ``relative_path`` — the path as it appeared inside the
+        original torrent before it was renamed to its storage location.
+        """
+        normalized_ids = sorted({int(activity_id) for activity_id in import_activity_ids})
+        if not normalized_ids:
+            return {}
+        placeholders = ", ".join("?" for _ in normalized_ids)
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT selection.planned_output_path, member.relative_path "  # noqa: S608
+                "FROM import_activity_selections AS selection "
+                "JOIN source_release_members AS member "
+                "ON member.id = selection.source_member_id "
+                f"WHERE selection.import_activity_id IN ({placeholders})",
+                normalized_ids,
+            ).fetchall()
+            return {row["planned_output_path"]: row["relative_path"] for row in rows}
+        finally:
+            conn.close()
+
     def plan_import(
         self,
         *,

@@ -45,6 +45,7 @@ const book = {
       protocol: null,
       downloaded_at: '2026-01-01T00:00:00+00:00',
       download_path: '/books/1/release/Shared Book.epub',
+      torrent_path: 'Shared Book.epub',
       downloadable_by_me: true,
     },
   ],
@@ -341,6 +342,8 @@ describe('BookDetailPage release deletion', () => {
 
     await screen.findByRole('heading', { name: 'Shared Book' });
     await user.click(screen.getByText('Advanced: show all releases (1)'));
+    expect(screen.getByText('Shared Book.epub')).not.toBeNull();
+    expect(screen.queryByText('/books/1/release/Shared Book.epub')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Delete release' }));
 
     await waitFor(() => {

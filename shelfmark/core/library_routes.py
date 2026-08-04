@@ -202,14 +202,28 @@ def _serialize_book_summary(book: dict[str, Any], *, library_added_at: Any) -> d
     }
 
 
+def _torrent_path(download_path: Any, mapping: dict[str, str]) -> Any:
+    """Return the torrent-relative path for a file, falling back to on-disk path."""
+    if download_path is None:
+        return None
+    return mapping.get(download_path) or download_path
+
+
 def _serialize_book_detail(
     book: dict[str, Any],
     *,
     files: list[dict[str, Any]],
     in_flight: list[dict[str, Any]],
     downloadable_history_ids: set[int],
+    relative_paths_by_output: dict[str, str],
 ) -> dict[str, Any]:
-    """Per #04 route table: GET /api/library/books/:book_id response shape."""
+    """Per #04 route table: GET /api/library/books/:book_id response shape.
+
+    Each file exposes ``torrent_path``, the path as it appeared inside the
+    original torrent (derived from the retained source member's
+    ``relative_path``), falling back to the on-disk ``download_path`` when no
+    source provenance is available.
+    """
     return {
         "book_id": book["id"],
         "metadata_provider": book.get("metadata_provider"),
@@ -235,6 +249,7 @@ def _serialize_book_detail(
                 "protocol": f.get("content_type"),
                 "downloaded_at": f.get("terminal_at"),
                 "download_path": f.get("download_path"),
+                "torrent_path": _torrent_path(f.get("download_path"), relative_paths_by_output),
                 "downloadable_by_me": int(f["id"]) in downloadable_history_ids,
             }
             for f in files
@@ -447,11 +462,30 @@ def register_library_routes(
             for f in files
             if (history_id := normalize_positive_int(f.get("id"))) is not None
         }
+        relative_paths_by_output: dict[str, str] = {}
+        if import_activity_service is not None:
+            activity_ids = [
+                int(f["import_activity_id"])
+                for f in files
+                if normalize_positive_int(f.get("import_activity_id")) is not None
+            ]
+            if activity_ids:
+                try:
+                    relative_paths_by_output = (
+                        import_activity_service.relative_paths_by_output_path(
+                            import_activity_ids=activity_ids
+                        )
+                    )
+                except _OPERATIONAL_ERRORS as exc:
+                    logger.warning(
+                        "Failed to resolve torrent paths for book_id=%s: %s", book_id, exc
+                    )
         detail = _serialize_book_detail(
             book,
             files=files,
             in_flight=in_flight,
             downloadable_history_ids=downloadable_history_ids,
+            relative_paths_by_output=relative_paths_by_output,
         )
         detail["in_my_library"] = library_service.is_in_library(
             user_id=actor.db_user_id, book_id=book_id

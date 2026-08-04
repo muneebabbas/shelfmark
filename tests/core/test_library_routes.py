@@ -636,6 +636,65 @@ def test_admin_can_review_and_replace_a_completed_source_release(
     assert not old_path.exists()
 
 
+def test_book_detail_exposes_torrent_relative_path(
+    app, user_db, import_activity_service, download_history_service, tmp_path
+):
+    admin = user_db.create_user(username="admin", role="admin")
+    book_id = client_post_book(app, admin, "hardcover", "torrent-path-book")
+    activity = import_activity_service.accept_book_targeted_release(
+        source_key="prowlarr:torrent-path-book",
+        source="prowlarr",
+        source_metadata={},
+        task_id="torrent-release",
+        book_id=book_id,
+    )
+    member = import_activity_service.record_source_member(
+        source_release_id=activity["source_release_id"],
+        relative_path="Mobi/Dune 01 Dune - Frank Herbert.mobi",
+        size=7,
+        file_format="mobi",
+        discovery_status="discovered",
+    )
+    planned = import_activity_service.plan_import(
+        activity_id=activity["id"],
+        storage_root=tmp_path / "books",
+        selections=[{"source_member_id": member["id"], "evidence": {"match": "default"}}],
+    )
+    import_activity_service.complete(activity_id=activity["id"])
+    output_path = planned["selections"][0]["planned_output_path"]
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(output_path).write_bytes(b"dune")
+    download_history_service.record_download(
+        task_id="torrent-release",
+        user_id=admin["id"],
+        username="admin",
+        request_id=None,
+        source="prowlarr",
+        source_display_name="Prowlarr",
+        title="Book torrent-path-book",
+        author="Author A",
+        file_format=None,
+        size=None,
+        preview=None,
+        content_type="ebook",
+        origin="book",
+        book_id=book_id,
+        import_activity_id=activity["id"],
+    )
+    download_history_service.finalize_download_files(
+        task_id="torrent-release",
+        final_status="complete",
+        file_rows=[{"download_path": output_path, "format": "mobi", "size": "7"}],
+    )
+    client = _authed_client(app, admin, is_admin=True)
+
+    detail = client.get(f"/api/library/books/{book_id}")
+
+    assert detail.status_code == 200
+    assert detail.json["files"][0]["torrent_path"] == "Mobi/Dune 01 Dune - Frank Herbert.mobi"
+    assert detail.json["files"][0]["download_path"] == output_path
+
+
 def test_request_only_member_gets_existing_files_and_can_send_them_to_kindle(
     app, user_db, tmp_path
 ):
