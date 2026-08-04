@@ -125,9 +125,7 @@ def _normalize_log_extra(value: object) -> Mapping[str, object] | None:
 
 # Standard attributes every LogRecord carries; anything else on the record comes
 # from structured `extra={...}` fields and gets rendered as a JSON suffix.
-_STANDARD_RECORD_ATTRS = frozenset(
-    logging.makeLogRecord({}).__dict__.keys()
-)
+_STANDARD_RECORD_ATTRS = frozenset(logging.makeLogRecord({}).__dict__.keys())
 
 
 class _StructuredFormatter(logging.Formatter):
@@ -151,7 +149,7 @@ class _StructuredFormatter(logging.Formatter):
             return message
         try:
             suffix = " " + json.dumps(extras, ensure_ascii=False, default=str)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             suffix = ""
         return f"{message}{suffix}"
 

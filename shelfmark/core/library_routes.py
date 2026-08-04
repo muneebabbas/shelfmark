@@ -419,7 +419,9 @@ def register_library_routes(
                 offset=offset,
             )
         except _OPERATIONAL_ERRORS as exc:
-            logger.error_trace("Library list_books failed", extra={"action": "list_books", "exc": exc})
+            logger.error_trace(
+                "Library list_books failed", extra={"action": "list_books", "exc": exc}
+            )
             return jsonify({"error": "Internal server error"}), 500
 
         files_by_book = library_service.get_files_on_disk_for_books(
@@ -1051,7 +1053,12 @@ def register_library_routes(
         except _OPERATIONAL_ERRORS as exc:
             logger.error_trace(
                 "Library delete_release failed",
-                extra={"action": "delete_release", "book_id": book_id, "history_id": history_id, "exc": exc},
+                extra={
+                    "action": "delete_release",
+                    "book_id": book_id,
+                    "history_id": history_id,
+                    "exc": exc,
+                },
             )
             return jsonify({"error": "Internal server error"}), 500
         if not deleted:
