@@ -1376,6 +1376,7 @@ def _transfer_default_import_selection(task: Any) -> None:
             auto_selections,
             book_evidence_from_snapshot,
             extract_epub_metadata,
+            is_single_variant_release,
         )
         from shelfmark.download.postprocess.scan import get_supported_formats
 
@@ -1387,11 +1388,13 @@ def _transfer_default_import_selection(task: Any) -> None:
             )
             if member["id"] in members_by_id and member["format"] in supported
         ]
-        if len(members) == 1:
-            # Single supported member: no multi-book ambiguity, so import it directly.
-            member = members[0]
+        if is_single_variant_release(members):
+            # One file per (admin-configured) book format, wherever they sit in the
+            # folder tree, counts as a single-book torrent: import the whole release
+            # and skip the collection matcher. Non-book files are already excluded.
             selections = [
-                {"source_member_id": member["id"], "evidence": {"match": "single-member"}}
+                {"source_member_id": member["id"], "evidence": {"match": "whole-release"}}
+                for member in members
             ]
         else:
             book = book_evidence_from_snapshot(activity["book_snapshot"])

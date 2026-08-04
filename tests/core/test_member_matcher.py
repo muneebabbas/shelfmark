@@ -16,6 +16,7 @@ from shelfmark.core.member_matcher import (
     decide,
     evaluate,
     extract_epub_metadata,
+    is_single_variant_release,
     normalize,
     parse_structured_member,
 )
@@ -336,8 +337,16 @@ def test_book_evidence_from_snapshot() -> None:
 def test_auto_selections_selects_only_exact_matches_of_collection() -> None:
     members = [
         {"id": 1, "relative_path": "epub/Dune 01 Dune - Frank Herbert.epub", "format": "epub"},
-        {"id": 2, "relative_path": "epub/Dune 02 Dune Messiah - Frank Herbert.epub", "format": "epub"},
-        {"id": 3, "relative_path": "epub/Dune 03 Children of Dune - Frank Herbert.epub", "format": "epub"},
+        {
+            "id": 2,
+            "relative_path": "epub/Dune 02 Dune Messiah - Frank Herbert.epub",
+            "format": "epub",
+        },
+        {
+            "id": 3,
+            "relative_path": "epub/Dune 03 Children of Dune - Frank Herbert.epub",
+            "format": "epub",
+        },
         {"id": 4, "relative_path": "Mobi/Dune 01 Dune - Frank Herbert.mobi", "format": "mobi"},
     ]
     selections = auto_selections(BOOK_DUNE, members)
@@ -351,7 +360,11 @@ def test_auto_selections_selects_only_exact_matches_of_collection() -> None:
 def test_auto_selections_empty_when_nothing_matches() -> None:
     members = [
         {"id": 1, "relative_path": "Dune 02 Dune Messiah - Frank Herbert.epub", "format": "epub"},
-        {"id": 2, "relative_path": "Heros of Dune 01 Paul of Dune - Brian Herbert.epub", "format": "epub"},
+        {
+            "id": 2,
+            "relative_path": "Heros of Dune 01 Paul of Dune - Brian Herbert.epub",
+            "format": "epub",
+        },
     ]
     assert auto_selections(BOOK_DUNE, members) == []
 
@@ -361,7 +374,35 @@ def test_auto_selections_uses_embedded_evidence_when_provided() -> None:
     members = [
         {"id": 1, "relative_path": "Dune 01 Dune - Frank Herbert.epub", "format": "epub"},
     ]
-    selections = auto_selections(
-        BOOK_DUNE, members, get_embedded=lambda _member: embedded
-    )
+    selections = auto_selections(BOOK_DUNE, members, get_embedded=lambda _member: embedded)
     assert [s["source_member_id"] for s in selections] == [1]
+
+
+# ----------------------------------------------------- single-variant release
+
+
+def _member(member_id: int, fmt: str) -> dict:
+    return {"id": member_id, "relative_path": f"f{member_id}.{fmt}", "format": fmt}
+
+
+def test_single_variant_single_file_is_single_book() -> None:
+    assert is_single_variant_release([_member(1, "epub")]) is True
+
+
+def test_single_variant_multiple_formats_across_folders_is_single_book() -> None:
+    # One epub, one mobi, one azw3, each in its own folder -> still a single book.
+    members = [
+        {"id": 1, "relative_path": "epub/Dune.epub", "format": "epub"},
+        {"id": 2, "relative_path": "Mobi/Dune.mobi", "format": "mobi"},
+        {"id": 3, "relative_path": "azw3/Dune.azw3", "format": "azw3"},
+    ]
+    assert is_single_variant_release(members) is True
+
+
+def test_duplicate_variant_same_format_is_a_collection() -> None:
+    members = [_member(1, "epub"), _member(2, "epub")]
+    assert is_single_variant_release(members) is False
+
+
+def test_single_variant_release_empty_is_not_single_book() -> None:
+    assert is_single_variant_release([]) is False

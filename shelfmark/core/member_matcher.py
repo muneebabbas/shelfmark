@@ -357,3 +357,18 @@ def auto_selections(
             }
         )
     return selections
+
+
+def is_single_variant_release(members: Sequence[Mapping[str, Any]]) -> bool:
+    """Whether a release is a single book carrying at most one file per format.
+
+    A single-book torrent may spread its one epub / one mobi / one azw3 across
+    several folders, so folder structure is deliberately ignored. Non-book files
+    (``.nfo``, covers, samples) must be excluded *before* calling: only the
+    admin-configured supported book formats should be passed in. The rule is
+    generic over formats -- it is not hardcoded to any specific extension.
+    """
+    counts: dict[str, int] = {}
+    for member in members:
+        counts[member["format"]] = counts.get(member["format"], 0) + 1
+    return bool(members) and all(count <= 1 for count in counts.values())
