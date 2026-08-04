@@ -8,6 +8,7 @@ export interface LibraryFile {
   protocol: string | null;
   downloaded_at: string | null;
   download_path: string | null;
+  torrent_path: string | null;
   downloadable_by_me: boolean;
 }
 

@@ -355,3 +355,39 @@ def test_reselecting_deleted_release_member_creates_a_new_final_file():
         assert [(file["task_id"], file["download_path"]) for file in files] == [
             ("activity-2", str(second_path))
         ]
+
+
+def test_relative_paths_by_output_path_maps_planned_paths_to_torrent_members():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "users.db")
+        storage_root = Path(tmpdir) / "library"
+        user_db = UserDB(db_path)
+        user_db.initialize()
+        service = ImportActivityService(db_path)
+        book_id = _create_book(user_db, "42", "Example")
+        activity = service.accept_book_targeted_release(
+            source_key="prowlarr:abc123",
+            source="prowlarr",
+            source_metadata={},
+            task_id="activity-1",
+            book_id=book_id,
+        )
+        member = service.record_source_member(
+            source_release_id=activity["source_release_id"],
+            relative_path="Mobi/Dune 01 Dune - Frank Herbert.mobi",
+            size=7,
+            file_format="mobi",
+            discovery_status="discovered",
+        )
+        planned = service.plan_import(
+            activity_id=activity["id"],
+            storage_root=storage_root,
+            selections=[{"source_member_id": member["id"], "evidence": {"match": "exact"}}],
+        )
+        planned_path = planned["selections"][0]["planned_output_path"]
+
+        mapping = service.relative_paths_by_output_path(import_activity_ids=[activity["id"]])
+
+        assert mapping == {planned_path: "Mobi/Dune 01 Dune - Frank Herbert.mobi"}
+
+        assert service.relative_paths_by_output_path(import_activity_ids=[]) == {}
