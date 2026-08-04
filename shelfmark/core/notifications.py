@@ -109,6 +109,7 @@ class NotificationEvent(StrEnum):
     REQUEST_REJECTED = "request_rejected"
     DOWNLOAD_COMPLETE = "download_complete"
     DOWNLOAD_FAILED = "download_failed"
+    IMPORT_NEEDS_REVIEW = "import_needs_review"
 
 
 @dataclass
@@ -308,6 +309,7 @@ _ADMIN_EVENTS = {
     NotificationEvent.REQUEST_CREATED,
     NotificationEvent.DOWNLOAD_COMPLETE,
     NotificationEvent.DOWNLOAD_FAILED,
+    NotificationEvent.IMPORT_NEEDS_REVIEW,
 }
 
 
@@ -369,6 +371,7 @@ def _resolve_notify_type(event: NotificationEvent) -> object:
             NotificationEvent.REQUEST_REJECTED: "warning",
             NotificationEvent.DOWNLOAD_COMPLETE: "success",
             NotificationEvent.DOWNLOAD_FAILED: "failure",
+            NotificationEvent.IMPORT_NEEDS_REVIEW: "warning",
         }
         return fallback[event]
 
@@ -378,6 +381,7 @@ def _resolve_notify_type(event: NotificationEvent) -> object:
         NotificationEvent.REQUEST_REJECTED: apprise.NotifyType.WARNING,
         NotificationEvent.DOWNLOAD_COMPLETE: apprise.NotifyType.SUCCESS,
         NotificationEvent.DOWNLOAD_FAILED: apprise.NotifyType.FAILURE,
+        NotificationEvent.IMPORT_NEEDS_REVIEW: apprise.NotifyType.WARNING,
     }
     return mapping[event]
 
@@ -410,6 +414,14 @@ def _render_message(context: NotificationContext) -> tuple[str, str]:
         )
     if event == NotificationEvent.DOWNLOAD_COMPLETE:
         return "Download Complete", f'"{title}" by {author} downloaded successfully.'
+
+    if event == NotificationEvent.IMPORT_NEEDS_REVIEW:
+        link = _build_book_url(context.book_id)
+        link_line = f"\nReview in the Inbox: {link}" if link else ""
+        return (
+            "Book Needs Review",
+            f'"{title}" by {author} could not be imported automatically and needs review.{link_line}',
+        )
 
     error_message = _clean_text(context.error_message, "")
     error_line = f"\nError: {error_message}" if error_message else ""
@@ -453,6 +465,13 @@ def _html_action_copy(context: NotificationContext) -> tuple[str, str]:
         return "Request declined", detail
     if event == NotificationEvent.DOWNLOAD_COMPLETE:
         return "Download complete", f'"{title}" by {author} downloaded successfully.'
+
+    if event == NotificationEvent.IMPORT_NEEDS_REVIEW:
+        return (
+            "A book needs review",
+            f'"{title}" by {author} could not be imported automatically. '
+            "Review the retained source files and select the correct ones.",
+        )
 
     error_message = _clean_text(context.error_message, "")
     detail = f'Failed to download "{title}" by {author}.'

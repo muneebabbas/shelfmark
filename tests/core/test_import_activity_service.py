@@ -391,3 +391,83 @@ def test_relative_paths_by_output_path_maps_planned_paths_to_torrent_members():
         assert mapping == {planned_path: "Mobi/Dune 01 Dune - Frank Herbert.mobi"}
 
         assert service.relative_paths_by_output_path(import_activity_ids=[]) == {}
+
+
+def test_needs_review_transition_and_inbox_listing():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "users.db")
+        user_db = UserDB(db_path)
+        user_db.initialize()
+        service = ImportActivityService(db_path)
+        book_a = _create_book(user_db, "42", "Example")
+        book_b = _create_book(user_db, "43", "Another")
+
+        first = service.accept_book_targeted_release(
+            source_key="prowlarr:first",
+            source="prowlarr",
+            source_metadata={},
+            task_id="activity-1",
+            book_id=book_a,
+        )
+        second = service.accept_book_targeted_release(
+            source_key="prowlarr:second",
+            source="prowlarr",
+            source_metadata={},
+            task_id="activity-2",
+            book_id=book_b,
+        )
+        resolved = service.accept_book_targeted_release(
+            source_key="prowlarr:resolved",
+            source="prowlarr",
+            source_metadata={},
+            task_id="activity-3",
+            book_id=book_a,
+        )
+
+        assert service.needs_review(activity_id=first["id"])["state"] == "needs review"
+        assert service.needs_review(activity_id=second["id"])["state"] == "needs review"
+
+        inbox_ids = [item["id"] for item in service.list_needs_review()]
+        assert int(first["id"]) in inbox_ids
+        assert int(second["id"]) in inbox_ids
+        assert int(resolved["id"]) not in inbox_ids
+
+        # Resolving (completing) a needs-review activity removes it from the Inbox.
+        service.complete(activity_id=second["id"])
+        remaining = [item["id"] for item in service.list_needs_review()]
+        assert int(first["id"]) in remaining
+        assert int(second["id"]) not in remaining
+
+
+def test_plan_import_works_from_needs_review_state():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "users.db")
+        storage_root = Path(tmpdir) / "library"
+        user_db = UserDB(db_path)
+        user_db.initialize()
+        service = ImportActivityService(db_path)
+        book_id = _create_book(user_db, "42", "Example")
+        activity = service.accept_book_targeted_release(
+            source_key="prowlarr:abc123",
+            source="prowlarr",
+            source_metadata={},
+            task_id="activity-1",
+            book_id=book_id,
+        )
+        service.needs_review(activity_id=activity["id"])
+        member = service.record_source_member(
+            source_release_id=activity["source_release_id"],
+            relative_path="Book.epub",
+            size=7,
+            file_format="epub",
+            discovery_status="discovered",
+        )
+
+        planned = service.plan_import(
+            activity_id=activity["id"],
+            storage_root=storage_root,
+            selections=[{"source_member_id": member["id"], "evidence": {"match": "manual"}}],
+        )
+
+        assert planned["state"] == "importing"
+        assert len(planned["selections"]) == 1

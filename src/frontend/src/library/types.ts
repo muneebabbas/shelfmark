@@ -86,6 +86,30 @@ export interface LibraryPurgePreview {
   users: Array<{ display_name: string | null; username: string }>;
 }
 
+export interface InboxEvidenceItem {
+  relative_path: string | null;
+  format: string | null;
+  available: boolean;
+  decision_reason: string;
+  auto_select: boolean;
+}
+
+export interface InboxItem {
+  activity_id: number;
+  book_id: number | null;
+  book_title: string;
+  book_author: string | null;
+  source: string | null;
+  source_key: string | null;
+  state: string;
+  updated_at: string | null;
+  evidence: InboxEvidenceItem[];
+}
+
+export interface InboxResponse {
+  items: InboxItem[];
+}
+
 export const latestFilesByFormat = (files: LibraryFile[]): LibraryFile[] => {
   const latest = new Map<string, LibraryFile>();
   for (const file of files) {

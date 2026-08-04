@@ -429,6 +429,80 @@ def register_library_routes(
             serialized.append(summary)
         return jsonify({"books": serialized, "total": total, "limit": limit, "offset": offset})
 
+    @app.route("/api/library/review/inbox", methods=["GET"])
+    def api_library_review_inbox() -> Response | LibraryRouteResponse:
+        action = "review_inbox"
+        gate = _actor_gate(action)
+        if isinstance(gate, _ActorContext):
+            actor = gate
+        else:
+            return gate
+        if not actor.is_admin:
+            return _error_response(action=action, status_code=403, error="Admin required")
+        if import_activity_service is None:
+            return jsonify({"items": []})
+
+        try:
+            activities = import_activity_service.list_needs_review()
+        except (OSError, sqlite3.Error) as exc:
+            logger.warning("Inbox review list failed: %s", exc)
+            return jsonify({"error": str(exc)}), 500
+
+        from shelfmark.core.member_matcher import (
+            book_evidence_from_snapshot,
+            decide,
+            parse_structured_member,
+        )
+
+        items: list[dict[str, Any]] = []
+        for activity in activities:
+            book_snapshot = activity.get("book_snapshot") or {}
+            source_release = activity.get("source_release") or {}
+            try:
+                source_root = normalize_optional_text(source_release.get("source_root"))
+                root = Path(source_root) if source_root else None
+                members = import_activity_service.source_members(
+                    source_release_id=activity["source_release_id"]
+                )
+            except (OSError, sqlite3.Error) as exc:
+                logger.warning(
+                    "Inbox review members failed for activity %s: %s", activity.get("id"), exc
+                )
+                members = []
+                root = None
+            book_evidence = book_evidence_from_snapshot(book_snapshot)
+
+            evidence_rows: list[dict[str, Any]] = []
+            for member in members:
+                member_evidence = parse_structured_member(member.get("relative_path") or "")
+                decision = decide(book_evidence, member_evidence)
+                evidence_rows.append(
+                    {
+                        "relative_path": member.get("relative_path"),
+                        "format": member.get("format"),
+                        "available": bool(
+                            root and (root / (member.get("relative_path") or "")).is_file()
+                        ),
+                        "decision_reason": decision.reason,
+                        "auto_select": decision.auto_select,
+                    }
+                )
+
+            items.append(
+                {
+                    "activity_id": activity["id"],
+                    "book_id": normalize_positive_int(book_snapshot.get("id")),
+                    "book_title": str(book_snapshot.get("title") or "Unknown title"),
+                    "book_author": normalize_optional_text(book_snapshot.get("author")),
+                    "source": source_release.get("source"),
+                    "source_key": source_release.get("source_key"),
+                    "state": activity["state"],
+                    "updated_at": activity.get("updated_at"),
+                    "evidence": evidence_rows,
+                }
+            )
+        return jsonify({"items": items})
+
     @app.route("/api/library/books/<int:book_id>", methods=["GET"])
     def api_library_book_detail(book_id: int) -> Response | LibraryRouteResponse:
         action = "book_detail"
@@ -764,7 +838,7 @@ def register_library_routes(
             )
         except _OPERATIONAL_ERRORS as exc:
             return jsonify({"error": str(exc)}), 500
-        if activity is None or activity["state"] != "completed":
+        if activity is None or activity["state"] not in {"completed", "needs review"}:
             return _error_response(action=action, status_code=404, error="Source release not found")
         source_root = normalize_optional_text(activity["source_release"].get("source_root"))
         if source_root is None:
@@ -840,7 +914,7 @@ def register_library_routes(
             original = import_activity_service.get_book_activity(
                 activity_id=activity_id, book_id=book_id
             )
-            if original is None or original["state"] != "completed":
+            if original is None or original["state"] not in {"completed", "needs review"}:
                 return _error_response(
                     action=action, status_code=404, error="Source release not found"
                 )
@@ -929,21 +1003,63 @@ def register_library_routes(
                     for member, path in zip(selected_members, paths, strict=True)
                 ],
             )
-            old_files = library_service.get_files_on_disk(book_id)
-            old_file = next(
-                (file for file in old_files if file.get("import_activity_id") == original["id"]),
-                None,
-            )
-            if old_file is None or not library_service.delete_release(
-                book_id=book_id, history_id=int(old_file["id"])
-            ):
-                msg = "Completed release could not be replaced"
-                raise RuntimeError(msg)
+            if original["state"] == "completed":
+                old_files = library_service.get_files_on_disk(book_id)
+                old_file = next(
+                    (
+                        file
+                        for file in old_files
+                        if file.get("import_activity_id") == original["id"]
+                    ),
+                    None,
+                )
+                if old_file is None or not library_service.delete_release(
+                    book_id=book_id, history_id=int(old_file["id"])
+                ):
+                    msg = "Completed release could not be replaced"
+                    raise RuntimeError(msg)
             import_activity_service.complete(activity_id=correction["id"])
+            if original["state"] == "needs review":
+                # The review import gives the Book at least one file and supersedes
+                # the pending casework activity: remove it from the Inbox while
+                # retaining its release-history audit.
+                import_activity_service.complete(activity_id=original["id"])
         except _OPERATIONAL_ERRORS as exc:
-            logger.warning("Library release replacement failed: %s", exc)
+            logger.warning("Library release review import failed: %s", exc)
             return jsonify({"error": str(exc)}), 500
         return jsonify({"status": "completed", "activity_id": correction["id"]})
+
+    @app.route(
+        "/api/library/books/<int:book_id>/releases/<int:activity_id>/review", methods=["DELETE"]
+    )
+    def api_library_cancel_review(
+        book_id: int, activity_id: int
+    ) -> Response | LibraryRouteResponse:
+        action = "cancel_review"
+        gate = _actor_gate(action)
+        if not isinstance(gate, _ActorContext):
+            return gate
+        admin_error = _admin_or_403(gate, action=action, book_id=book_id)
+        if admin_error is not None:
+            return admin_error
+        if import_activity_service is None:
+            return _error_response(action=action, status_code=404, error="Source release not found")
+        try:
+            activity = import_activity_service.get_book_activity(
+                activity_id=activity_id, book_id=book_id
+            )
+        except _OPERATIONAL_ERRORS as exc:
+            return jsonify({"error": str(exc)}), 500
+        if activity is None or activity["state"] != "needs review":
+            return _error_response(action=action, status_code=404, error="Source release not found")
+        try:
+            # "No relevant files" — cancel the pending review, removing it from the
+            # Inbox while retaining its release-history audit.
+            import_activity_service.cancel(activity_id=activity_id)
+        except _OPERATIONAL_ERRORS as exc:
+            logger.warning("Library review cancel failed: %s", exc)
+            return jsonify({"error": str(exc)}), 500
+        return jsonify({"status": "cancelled", "activity_id": activity_id})
 
     @app.route("/api/library/books/<int:book_id>/downloads/<int:history_id>", methods=["DELETE"])
     def api_library_delete_release(

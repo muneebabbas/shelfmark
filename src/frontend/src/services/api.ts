@@ -1,5 +1,6 @@
 import type {
   BookDetailResponse,
+  InboxResponse,
   LibraryBooksResponse,
   LibraryPurgePreview,
   ReleaseReviewResponse,
@@ -59,6 +60,7 @@ const API = {
   activityDismissMany: `${API_BASE}/activity/dismiss-many`,
   activityHistory: `${API_BASE}/activity/history`,
   libraryBooks: `${API_BASE}/library/books`,
+  libraryReviewInbox: `${API_BASE}/library/review/inbox`,
 };
 
 // Custom error class for authentication failures
@@ -541,6 +543,16 @@ export const getLibraryReleaseReview = async (
   return fetchJSON<ReleaseReviewResponse>(
     `${API.libraryBooks}/${bookId}/releases/${activityId}/review`,
   );
+};
+
+export const cancelLibraryReview = async (bookId: number, activityId: number): Promise<void> => {
+  await fetchJSON(`${API.libraryBooks}/${bookId}/releases/${activityId}/review`, {
+    method: 'DELETE',
+  });
+};
+
+export const getLibraryReviewInbox = async (): Promise<InboxResponse> => {
+  return fetchJSON<InboxResponse>(API.libraryReviewInbox);
 };
 
 export const replaceLibraryRelease = async (

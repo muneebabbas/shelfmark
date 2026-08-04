@@ -1360,6 +1360,61 @@ def _record_source_members(task: Any) -> dict[int, Path]:
         return recorded
 
 
+def _should_route_to_needs_review(members: list[dict[str, Any]]) -> bool:
+    """Whether a zero-selection release should enter pending administrator casework.
+
+    A release is routed to the Inbox as ``needs review`` when it carries at
+    least one member formatted as one of the configured review-required formats
+    (default ``epub``). The configured set mirrors ``SUPPORTED_FORMATS`` choices;
+    an empty configured set means any release that imported no files is routed.
+    """
+    configured = app_config.get("IMPORT_NEEDS_REVIEW_FORMATS", ["epub"])
+    if not isinstance(configured, list):
+        configured = ["epub"]
+    review_formats = {str(item).strip().lower() for item in configured if str(item).strip()}
+    if not review_formats:
+        return bool(members)
+    return any(str(member.get("format") or "").lower() in review_formats for member in members)
+
+
+def _transition_activity_to_needs_review(
+    *, activity: dict[str, Any], task: Any, activity_id: int
+) -> None:
+    """Mark an activity as needing review and raise one administrator alert.
+
+    ``notify_admin`` only dispatches when an admin named this event on a
+    configured target, so repeating transitions never re-send unless an admin
+    deliberately re-triggers it; a pending needs-review activity is a single
+    Inbox item and a single alert.
+    """
+    if import_activity_service is None:
+        return
+    try:
+        transitioned = import_activity_service.needs_review(activity_id=activity_id)
+    except RuntimeError, TypeError, ValueError:
+        logger.warning("Failed to transition import task %s to needs review", task.task_id)
+        return
+    book_snapshot = transitioned.get("book_snapshot") or {}
+    try:
+        notify_admin(
+            NotificationEvent.IMPORT_NEEDS_REVIEW,
+            NotificationContext(
+                event=NotificationEvent.IMPORT_NEEDS_REVIEW,
+                title=str(book_snapshot.get("title") or "Unknown title"),
+                author=str(book_snapshot.get("author") or "Unknown author"),
+                source=normalize_source((transitioned.get("source_release") or {}).get("source")),
+                book_id=normalize_positive_int(book_snapshot.get("id")),
+                content_type=normalize_content_type(getattr(task, "content_type", None))
+                if getattr(task, "content_type", None)
+                else None,
+            ),
+        )
+    except (RuntimeError, TypeError, ValueError) as exc:
+        logger.warning(
+            "Failed to trigger needs-review admin notification for task %s: %s", task.task_id, exc
+        )
+
+
 def _transfer_default_import_selection(task: Any) -> None:
     """Auto-select exact-affirmative matches among retained members, then transfer."""
     if import_activity_service is None:
@@ -1410,12 +1465,19 @@ def _transfer_default_import_selection(task: Any) -> None:
                 ),
             )
             if not selections:
-                logger.warning(
-                    "No source members auto-matched for import task %s (book %s); "
-                    "leaving release available for manual review",
-                    task.task_id,
-                    activity["book_snapshot"].get("title"),
-                )
+                if _should_route_to_needs_review(members):
+                    _transition_activity_to_needs_review(
+                        activity=activity,
+                        task=task,
+                        activity_id=activity_id,
+                    )
+                else:
+                    logger.warning(
+                        "No source members auto-matched for import task %s (book %s); "
+                        "release carries no review-required format, leaving available for manual review",
+                        task.task_id,
+                        activity["book_snapshot"].get("title"),
+                    )
                 return
         activity = import_activity_service.plan_import(
             activity_id=activity_id,
@@ -1574,13 +1636,22 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
     activity_id = normalize_positive_int(getattr(task, "import_activity_id", None))
     if import_activity_service is not None and activity_id is not None:
         try:
-            if effective_final_status == QueueStatus.COMPLETE.value and finalized_download:
+            current_activity = import_activity_service.get_by_task_id(task_id)
+            pending_needs_review = bool(
+                current_activity is not None and current_activity["state"] == "needs review"
+            )
+            if (
+                effective_final_status == QueueStatus.COMPLETE.value
+                and finalized_download
+                and not pending_needs_review
+            ):
                 import_activity_service.complete(activity_id=activity_id)
             elif effective_final_status == QueueStatus.COMPLETE.value:
-                import_activity_service.fail(
-                    activity_id=activity_id,
-                    error_context={"message": finalize_error or "Import finalization failed"},
-                )
+                if not pending_needs_review:
+                    import_activity_service.fail(
+                        activity_id=activity_id,
+                        error_context={"message": finalize_error or "Import finalization failed"},
+                    )
             elif effective_final_status == QueueStatus.CANCELLED.value:
                 import_activity_service.cancel(activity_id=activity_id)
             else:

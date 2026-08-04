@@ -507,4 +507,67 @@ describe('BookDetailPage source review', () => {
       );
     });
   });
+
+  it('auto-opens the source review when arriving from the Inbox with a review param', async () => {
+    const user = userEvent.setup();
+    const reviewBook = { ...book, files: [] };
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith('/releases/22/review')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              activity_id: 22,
+              source: 'prowlarr',
+              source_key: 'prowlarr:source',
+              destination: '/books',
+              members: [
+                {
+                  id: 7,
+                  relative_path: 'epub/Dune.epub',
+                  format: 'epub',
+                  size: 1024,
+                  available: true,
+                  evidence: {},
+                  evidence_summary: 'No prior selection evidence',
+                },
+              ],
+            }),
+          ),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify(reviewBook)));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/library/1?review=22']}>
+        <Routes>
+          <Route
+            path="/library/:bookId"
+            element={
+              <BookDetailPage
+                autoFindReleases={false}
+                canFindReleases
+                canDeleteReleases
+                isRequestOnly={false}
+                isAdmin
+                onFindReleases={() => undefined}
+                onOpenSettings={() => undefined}
+                onShowToast={() => undefined}
+              />
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('heading', { name: 'Review source files' });
+    const review = await screen.findByRole('button', { name: 'Review selection' });
+    if (!(review instanceof HTMLButtonElement)) throw new Error('Expected selection button');
+    expect(review.disabled).toBe(true);
+
+    await user.click(screen.getByRole('checkbox', { name: 'Select epub/Dune.epub' }));
+    await user.click(await screen.findByRole('button', { name: 'Review selection' }));
+    await user.click(screen.getByRole('button', { name: 'Import 1 file' }));
+  });
 });

@@ -334,3 +334,32 @@ def test_html_email_test_template_renders_sample_card(monkeypatch):
     assert "https://shelfmark.example.com/library" in html
     assert "No cover" in html
     assert "View in Library" in html
+
+
+def test_admin_needs_review_event_dispatch_when_subscribed(monkeypatch):
+    executor = _Executor()
+    monkeypatch.setattr(notifications_module, "_executor", executor)
+    monkeypatch.setattr(
+        notifications_module,
+        "_resolve_admin_targets",
+        lambda: [
+            {
+                "transport": "apprise",
+                "destination": "ntfys://ntfy.sh/ops",
+                "events": ["import_needs_review"],
+            }
+        ],
+    )
+    event = notifications_module.NotificationEvent.IMPORT_NEEDS_REVIEW
+    notifications_module.notify_admin(event, _context(event))
+    assert len(executor.calls) == 1
+
+
+def test_render_message_needs_review_copy(monkeypatch):
+    monkeypatch.setattr(notifications_module, "_build_book_url", lambda _book_id: "/library/17")
+    title, body = notifications_module._render_message(
+        _context(notifications_module.NotificationEvent.IMPORT_NEEDS_REVIEW)
+    )
+    assert title == "Book Needs Review"
+    assert "Book" in body
+    assert "needs review" in body

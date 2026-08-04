@@ -19,6 +19,7 @@ def test_notifications_tab_exposes_only_administrator_operational_targets():
         "request_created",
         "download_complete",
         "download_failed",
+        "import_needs_review",
     ]
 
 

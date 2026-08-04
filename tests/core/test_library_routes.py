@@ -1434,3 +1434,150 @@ def _first_book_id_for_user(app: Flask, user: dict) -> int:
     resp = _authed_client(app, user).get("/api/library/books")
     assert resp.status_code == 200
     return int(resp.json["books"][0]["book_id"])
+
+
+def test_admin_reviews_and_imports_a_needs_review_release(
+    app, user_db, import_activity_service, download_history_service, library_service, tmp_path
+):
+    admin = user_db.create_user(username="admin", role="admin")
+    book_id = client_post_book(app, admin, "hardcover", "needs-review-source")
+    source_root = tmp_path / "retained"
+    source_root.mkdir()
+    source_file = source_root / "Book.epub"
+    source_file.write_bytes(b"content")
+    activity = import_activity_service.accept_book_targeted_release(
+        source_key="prowlarr:needs-review",
+        source="prowlarr",
+        source_metadata={},
+        task_id="needs-review-task",
+        book_id=book_id,
+    )
+    import_activity_service.set_source_root(
+        source_release_id=activity["source_release_id"], source_root=source_root
+    )
+    member = import_activity_service.record_source_member(
+        source_release_id=activity["source_release_id"],
+        relative_path="Book.epub",
+        size=len(b"content"),
+        file_format="epub",
+        discovery_status="discovered",
+    )
+    import_activity_service.needs_review(activity_id=activity["id"])
+    client = _authed_client(app, admin, is_admin=True)
+
+    review = client.get(f"/api/library/books/{book_id}/releases/{activity['id']}/review")
+    import_result = client.post(
+        f"/api/library/books/{book_id}/releases/{activity['id']}/review",
+        json={"member_ids": [member["id"]]},
+    )
+
+    assert review.status_code == 200
+    assert review.json["members"][0]["relative_path"] == "Book.epub"
+    assert import_result.status_code == 200, import_result.json
+
+    files = library_service.get_files_on_disk(book_id)
+    assert len(files) == 1
+    assert Path(files[0]["download_path"]).read_bytes() == b"content"
+    # The pending needs-review activity leaves the Inbox (superseded).
+    assert [item["id"] for item in import_activity_service.list_needs_review()] == []
+
+
+def test_admin_review_import_rejects_empty_selection(
+    app, user_db, import_activity_service, tmp_path
+):
+    admin = user_db.create_user(username="admin", role="admin")
+    book_id = client_post_book(app, admin, "hardcover", "empty-source")
+    source_root = tmp_path / "retained"
+    source_root.mkdir()
+    activity = import_activity_service.accept_book_targeted_release(
+        source_key="prowlarr:empty",
+        source="prowlarr",
+        source_metadata={},
+        task_id="empty-task",
+        book_id=book_id,
+    )
+    import_activity_service.set_source_root(
+        source_release_id=activity["source_release_id"], source_root=source_root
+    )
+    import_activity_service.needs_review(activity_id=activity["id"])
+    client = _authed_client(app, admin, is_admin=True)
+
+    response = client.post(
+        f"/api/library/books/{book_id}/releases/{activity['id']}/review",
+        json={"member_ids": []},
+    )
+
+    assert response.status_code == 400
+    assert "one or more" in response.json["error"].lower()
+
+
+def test_admin_cancels_a_needs_review_release_when_no_files_relevant(
+    app, user_db, import_activity_service, tmp_path
+):
+    admin = user_db.create_user(username="admin", role="admin")
+    book_id = client_post_book(app, admin, "hardcover", "cancel-source")
+    source_root = tmp_path / "retained"
+    source_root.mkdir()
+    activity = import_activity_service.accept_book_targeted_release(
+        source_key="prowlarr:cancel",
+        source="prowlarr",
+        source_metadata={},
+        task_id="cancel-task",
+        book_id=book_id,
+    )
+    import_activity_service.set_source_root(
+        source_release_id=activity["source_release_id"], source_root=source_root
+    )
+    import_activity_service.needs_review(activity_id=activity["id"])
+    client = _authed_client(app, admin, is_admin=True)
+
+    response = client.delete(f"/api/library/books/{book_id}/releases/{activity['id']}/review")
+
+    assert response.status_code == 200
+    assert response.json["status"] == "cancelled"
+    assert [item["id"] for item in import_activity_service.list_needs_review()] == []
+
+
+def test_review_inbox_is_admin_only_and_lists_needs_review(
+    app, user_db, import_activity_service, tmp_path
+):
+    admin = user_db.create_user(username="admin", role="admin")
+    member = user_db.create_user(username="member", role="member")
+    book_id = client_post_book(app, admin, "hardcover", "inbox-source")
+    source_root = tmp_path / "retained"
+    source_root.mkdir()
+    source_root.joinpath("Book.epub").write_bytes(b"content")
+    activity = import_activity_service.accept_book_targeted_release(
+        source_key="prowlarr:inbox",
+        source="prowlarr",
+        source_metadata={},
+        task_id="inbox-task",
+        book_id=book_id,
+    )
+    import_activity_service.set_source_root(
+        source_release_id=activity["source_release_id"], source_root=source_root
+    )
+    import_activity_service.record_source_member(
+        source_release_id=activity["source_release_id"],
+        relative_path="Book.epub",
+        size=7,
+        file_format="epub",
+        discovery_status="discovered",
+    )
+    import_activity_service.needs_review(activity_id=activity["id"])
+
+    member_client = _authed_client(app, member)
+    admin_client = _authed_client(app, admin, is_admin=True)
+
+    forbidden = member_client.get("/api/library/review/inbox")
+    assert forbidden.status_code == 403
+
+    response = admin_client.get("/api/library/review/inbox")
+    assert response.status_code == 200
+    assert len(response.json["items"]) == 1
+    item = response.json["items"][0]
+    assert item["activity_id"] == activity["id"]
+    assert item["book_id"] == book_id
+    assert item["source_key"] == "prowlarr:inbox"
+    assert item["state"] == "needs review"
+    assert item["evidence"][0]["relative_path"] == "Book.epub"
