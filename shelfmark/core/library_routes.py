@@ -202,6 +202,13 @@ def _serialize_book_summary(book: dict[str, Any], *, library_added_at: Any) -> d
     }
 
 
+def _torrent_path(download_path: Any, mapping: dict[str, str]) -> Any:
+    """Return the torrent-relative path for a file, falling back to on-disk path."""
+    if download_path is None:
+        return None
+    return mapping.get(download_path) or download_path
+
+
 def _serialize_book_detail(
     book: dict[str, Any],
     *,
@@ -242,8 +249,7 @@ def _serialize_book_detail(
                 "protocol": f.get("content_type"),
                 "downloaded_at": f.get("terminal_at"),
                 "download_path": f.get("download_path"),
-                "torrent_path": relative_paths_by_output.get(f.get("download_path"))
-                or f.get("download_path"),
+                "torrent_path": _torrent_path(f.get("download_path"), relative_paths_by_output),
                 "downloadable_by_me": int(f["id"]) in downloadable_history_ids,
             }
             for f in files
