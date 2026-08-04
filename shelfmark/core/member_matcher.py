@@ -210,6 +210,14 @@ def _parse_metadata_xml(xml_text: str) -> MemberEvidence:
             elif name in ("calibre:series_index", "series index") and content:
                 position = _as_float(content)
 
+    if title:
+        parsed = _parse_series_prefix(title)
+        if parsed:
+            candidate_series, candidate_position, candidate_title = parsed
+            title = candidate_title
+            series = series or candidate_series
+            position = position if position is not None else candidate_position
+
     return MemberEvidence(
         title=title, author=author, isbn=isbn, series=series, series_position=position
     )

@@ -250,6 +250,37 @@ def test_parse_metadata_xml() -> None:
     )
 
 
+SERIES_PREFIXED_OPF = """<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf"
+         xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <metadata>
+    <dc:title>Dune 01 Dune</dc:title>
+    <dc:creator>Frank Herbert</dc:creator>
+    <dc:identifier opf:scheme="ISBN" xmlns:opf="http://www.idpf.org/2007/opf">
+      9780575081505
+    </dc:identifier>
+    <meta name="calibre:series" content="Dune"/>
+    <meta name="calibre:series_index" content="1"/>
+  </metadata>
+</package>
+"""
+
+
+def test_embedded_series_prefixed_title_collapses_to_clean_title() -> None:
+    """Real Calibre EPUBs embed 'Series NN Title'; it must collapse to the clean title."""
+    evidence = _parse_metadata_xml(SERIES_PREFIXED_OPF)
+    assert evidence.title == "Dune"
+    assert evidence.series == "Dune"
+    assert evidence.series_position == 1.0
+
+
+def test_real_world_isbn_edition_mismatch_still_matches_via_series() -> None:
+    """Provider ISBN differs from the file's edition ISBN; the series path must succeed."""
+    embedded = _parse_metadata_xml(SERIES_PREFIXED_OPF)
+    assert embedded.isbn == "9780575081505"
+    assert decide(BOOK_DUNE, embedded).auto_select is True
+
+
 def test_extract_epub_metadata(tmp_path) -> None:
     epub = tmp_path / "Dune 01 Dune - Frank Herbert.epub"
     with zipfile.ZipFile(epub, "w") as archive:

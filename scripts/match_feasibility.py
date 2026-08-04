@@ -27,6 +27,7 @@ from shelfmark.core.member_matcher import (  # noqa: E402
     BookEvidence,
     book_evidence_from_snapshot,
     evaluate,
+    extract_epub_metadata,
 )
 from tests.fixtures.collections import DUNE_FILES, EXPANSE_FILES  # noqa: E402
 
@@ -39,19 +40,45 @@ def load_book(conn: sqlite3.Connection, book_id: int) -> BookEvidence:
     return book_evidence_from_snapshot(dict(row))
 
 
-def run(book: BookEvidence, label: str, members: list[tuple[str, str]]) -> None:
-    matched = [path for path, _ in members if evaluate(book, path)["auto_select"]]
+def source_root_for(conn: sqlite3.Connection, book_id: int) -> str | None:
+    row = conn.execute(
+        "SELECT sr.source_root FROM source_releases sr "
+        "JOIN import_activities ia ON ia.source_release_id = sr.id "
+        "WHERE ia.book_id = ? LIMIT 1",
+        (book_id,),
+    ).fetchone()
+    return row["source_root"] if row else None
+
+
+def run(
+    book: BookEvidence,
+    label: str,
+    members: list[tuple[str, str]],
+    *,
+    source_root: str | None = None,
+) -> None:
+    def decide(member_path: str) -> dict:
+        embedded = None
+        if source_root:
+            raw = Path(source_root) / member_path.lstrip("./")
+            if raw.is_file() and raw.suffix.lower() == ".epub":
+                embedded = extract_epub_metadata(raw)
+        return evaluate(book, member_path, embedded=embedded)
+
+    matched = [path for path, _ in members if decide(path)["auto_select"]]
     print(
         f"\n[{label}]  {book.title} — {book.author}"
         f" (series={book.series} pos={book.series_position})"
     )
+    if source_root:
+        print(f"    source_root: {source_root}  (real embedded metadata active)")
     print(f"    would auto-select ({len(matched)} of {len(members)} members):")
     if not matched:
         print("      (none)")
     for path in matched:
         print(f"      AUTO  {path}")
     for path, _ in members:
-        result = evaluate(book, path)
+        result = decide(path)
         if not result["auto_select"]:
             print(f"      skip  {path}\n            -> {result['reason']}")
 
@@ -71,9 +98,19 @@ def main() -> None:
     expanse_members = [(name, name.rsplit(".", 1)[-1]) for name in EXPANSE_FILES]
 
     for book_id in args.dune_ids:
-        run(load_book(conn, book_id), f"Dune book {book_id}", dune_members)
+        run(
+            load_book(conn, book_id),
+            f"Dune book {book_id}",
+            dune_members,
+            source_root=source_root_for(conn, book_id),
+        )
     for book_id in args.expanse_ids:
-        run(load_book(conn, book_id), f"Expanse book {book_id}", expanse_members)
+        run(
+            load_book(conn, book_id),
+            f"Expanse book {book_id}",
+            expanse_members,
+            source_root=source_root_for(conn, book_id),
+        )
 
 
 if __name__ == "__main__":
