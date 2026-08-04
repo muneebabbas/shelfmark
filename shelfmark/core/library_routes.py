@@ -446,7 +446,7 @@ def register_library_routes(
             activities = import_activity_service.list_needs_review()
         except (OSError, sqlite3.Error) as exc:
             logger.warning("Inbox review list failed: %s", exc)
-            return jsonify({"error": str(exc)}), 500
+            return jsonify({"error": "Internal server error"}), 500
 
         from shelfmark.core.member_matcher import (
             book_evidence_from_snapshot,
@@ -1049,7 +1049,8 @@ def register_library_routes(
                 activity_id=activity_id, book_id=book_id
             )
         except _OPERATIONAL_ERRORS as exc:
-            return jsonify({"error": str(exc)}), 500
+            logger.warning("Library review activity lookup failed: %s", exc)
+            return jsonify({"error": "Internal server error"}), 500
         if activity is None or activity["state"] != "needs review":
             return _error_response(action=action, status_code=404, error="Source release not found")
         try:
@@ -1058,7 +1059,7 @@ def register_library_routes(
             import_activity_service.cancel(activity_id=activity_id)
         except _OPERATIONAL_ERRORS as exc:
             logger.warning("Library review cancel failed: %s", exc)
-            return jsonify({"error": str(exc)}), 500
+            return jsonify({"error": "Internal server error"}), 500
         return jsonify({"status": "cancelled", "activity_id": activity_id})
 
     @app.route("/api/library/books/<int:book_id>/downloads/<int:history_id>", methods=["DELETE"])
