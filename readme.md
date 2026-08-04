@@ -1,26 +1,33 @@
-# 📚 Shelfmark: Book Search & Request Tool
+# 📚 Shelfmark: Self-Hosted Library-First Book Discovery
 
 <img src="src/frontend/public/logo.png" alt="Shelfmark" width="200">
 
 > [!NOTE]
-> This project is in a stable state as of May 2026 but is not under active maintenance.
+> This is a personal library-first fork of Shelfmark. It is in a stable state but is not under active maintenance.
 
-Shelfmark is a self-hosted web interface for searching and requesting books and audiobooks across multiple sources. Bring your own sources, metadata providers, and download clients to build a single hub for your digital library. Supports multiple users with a built-in request system, so you can share your instance with others and let them browse and request books on their own.
+Shelfmark is a self-hosted web interface for discovering, requesting, and downloading books and audiobooks across multiple providers. You bring your own metadata providers, sources, and download clients to build a single hub for your personal library. Multiple users are supported with a built-in request and approval system.
 
-Works great alongside the following library tools, with support for automatic imports:
-- [Calibre](https://calibre-ebook.com/)
-- [Calibre-Web](https://github.com/janeczku/calibre-web)
-- [Calibre-Web-Automated](https://github.com/crocodilestick/Calibre-Web-Automated)
-- [Grimmory](https://github.com/grimmory-tools/grimmory)
-- [Audiobookshelf](https://github.com/advplyr/audiobookshelf)
+## The Library workflow
+
+Shelfmark is library-first: the Library is what you track, not the files you happen to have downloaded.
+
+1. **Discover** — find provider-backed Books (metadata like title, author, cover, series) from your configured metadata providers.
+2. **Add to your Library** — add a Book you want to track. A Library tracks provider-backed Books, independently of whether you have downloaded any Files for them.
+3. **Download or Request** — depending on your **Library Capability**, either download Files directly or request them:
+   - **Download-capable users** search releases and queue Downloads directly.
+   - **Request-only users** add Books to their Library and submit book-level Requests that an administrator fulfils.
+   - **Administrators** manage users, approve and fulfil Requests, and administer the instance (a separate privilege, not a third Capability).
+
+Files can be downloaded in the browser, or sent to Kindle (or another delivery target) when the user is permitted to do so.
 
 ## ✨ Features
 
-- **One-Stop Interface** - A clean, modern UI to search, browse, and download from multiple configured sources in one place
-- **Multiple Sources** - Configurable web, torrent, usenet, and IRC source support
+- **Library-First** - Track Books in a personal Library; a Book can be tracked with zero downloaded Files (wishlist semantics)
+- **Provider-Backed Discovery** - Search metadata providers (Hardcover, Open Library, Google Books) for rich book and audiobook discovery
+- **Multiple Sources** - Configurable web, torrent, usenet, and IRC release source support
 - **Audiobook Support** - Full audiobook search and download with dedicated processing
-- **Flexible Search** - Search metadata providers (Hardcover, Open Library, Google Books) for rich book and audiobook discovery, or query configured sources directly
-- **Multi-User & Requests** - Share your instance with others, let users browse and request books, and manage approvals with configurable notifications
+- **Multi-User & Requests** - Users browse and add Books; download-capable users download directly, request-only users submit Requests an admin fulfils, with configurable notifications
+- **Role Distinction** - Download-capable users, request-only users, and administrators are distinct roles and are never conflated
 - **Authentication** - Built-in login, OIDC single sign-on, proxy auth, and Calibre-Web database support
 - **Real-Time Progress** - Unified download queue with live status updates across all sources
 - **Network Flexibility** - Configurable proxy support, DNS settings, and optional Cloudflare handling for protected sources
@@ -197,26 +204,26 @@ volumes:
 
 ### Multi-User Support
 
-With any authentication method enabled, Shelfmark supports multi-user management with admin/user roles. Users can have per-user settings for download destinations, email recipients, and notification preferences. Non-admin users only see their own downloads and can submit book requests for admin review. Admins can configure request policies per source to control whether users can download directly, must submit a request, or are blocked entirely.
+With any authentication method enabled, Shelfmark supports multi-user management with distinct roles: download-capable users, request-only users, and administrators. Users can have per-user settings for download destinations, email recipients, and notification preferences. Request-only users can add Books to their Library and submit book-level Requests for admin fulfilment, but cannot search or select releases on their own. Download-capable users can search releases and queue Downloads directly. Administrators manage users and requests, and can configure request policies per source to control whether users download directly, must submit a request, or are blocked entirely.
 
 ## Project Scope
 
-Shelfmark is a manual search and download tool, the entry point to your book library, not a library manager. It finds books, downloads them, and sends them to a configured destination. That's the full scope.
+Shelfmark is a library-first book and audiobook discovery, request, and download tool. It lets you discover provider-backed Books, add them to your Library, and download or request Files for them. A Library tracks provider-backed Books independently of downloaded Files.
 
 Shelfmark intentionally does not:
 
-- **Track or manage your library** - it doesn't know or care what you already own
-- **Integrate with library software** - what happens after delivery is up to your library tool
+- **Integrate with other project types** - it does not act as a general-purpose manager for unrelated projects or collections; only the library, request, and download workflow described here is supported
 - **Monitor authors, series, or new releases** - there is no background automation
-- **Queue future downloads** - if a book isn't available now, Shelfmark won't watch for it
+- **Queue future downloads** - if a Book isn't available now, Shelfmark won't watch for it
+- **Merge Books across providers** - the same work discovered via two providers lives as two separate Books
 
 These are non-goals, not missing features.
 
 ## Contributing
 
-Shelfmark's core feature set is complete. Development focuses on stability, bug fixes, quality-of-life improvements, and refining the search experience. Contributions in these areas are welcome, please file issues or submit pull requests on GitHub.
+Shelfmark's core feature set is complete. Development focuses on stability, bug fixes, quality-of-life improvements, and refining the library and search experience. Contributions in these areas are welcome, please file issues or submit pull requests on GitHub.
 
-Feature requests that fall outside the project scope (library integration, automation, collection management) will be closed. If you're unsure whether something fits, open a discussion first.
+Feature requests that fall outside the project scope (unrelated project integrations, automation, general collection management) will be closed. If you're unsure whether something fits, open a discussion first.
 
 ## Health Monitoring
 
@@ -278,4 +285,4 @@ Use of this tool is entirely at your own risk.
 
 ## Support
 
-For issues or questions, please [file an issue](https://github.com/calibrain/shelfmark/issues) on GitHub.
+For issues or questions, please [file an issue](https://github.com/muneebabbas/shelfmark/issues) on the Shelfmark fork repository.
