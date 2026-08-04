@@ -1,6 +1,6 @@
 # Custom Scripts
 
-Shelfmark can run an executable you provide after a download task completes successfully. The script runs after the selected output has finished (for example: transfer to the folder destination, or upload to Booklore).
+Shelfmark can run an executable you provide after a download task completes successfully. The script runs after the selected output has finished (that is, after the file is transferred to the folder destination).
 
 
 ## Quick Start (Recommended)
@@ -68,10 +68,9 @@ Shelfmark chooses a "best single path" for the task:
 - If the output produced exactly one local file: that file path.
 - If the output produced multiple local files: a directory path (the common parent directory of those files).
 
-What the target path refers to depends on the output mode:
+What the target path refers to depends on the output:
 
 - Folder output (`output.mode=folder`, `phase=post_transfer`): the final imported file or folder inside your destination.
-- Booklore output (`output.mode=booklore`, `phase=post_upload`): the local file or folder that was uploaded (the destination is remote).
 
 By default, `$1` is an absolute path inside the Shelfmark container (or on your host, if you are not using Docker).
 
@@ -79,12 +78,12 @@ By default, `$1` is an absolute path inside the Shelfmark container (or on your 
 
 Configure in: Settings -> Advanced -> Custom Script JSON Payload
 
-When enabled, Shelfmark sends a versioned JSON payload to your script via stdin (and still passes `$1`). This is the recommended way to write robust scripts, especially for multi-file imports (audiobooks) and output-specific context (like Booklore).
+When enabled, Shelfmark sends a versioned JSON payload to your script via stdin (and still passes `$1`). This is the recommended way to write robust scripts, especially for multi-file imports (audiobooks).
 
 - The JSON payload always includes absolute paths in `paths.*`, even if you set Custom Script Path Mode to `relative` for `$1`.
 - `output.mode` tells you which output ran.
-- `output.details` is output-specific. For Booklore output, `output.details.booklore` includes connection details such as `base_url`, `library_id`, and `path_id`.
-- `phase` indicates when the script is running. Current values: `post_transfer` (folder output), `post_upload` (Booklore output).
+- `output.details` is output-specific.
+- `phase` indicates when the script is running. Current values: `post_transfer` (folder output).
 - `transfer` is only included for outputs that do a local transfer (for example the folder output).
 
 If JSON payload is disabled, stdin is empty (EOF). Don't `cat` stdin unless you've enabled the payload.
@@ -171,7 +170,7 @@ This setting controls what gets passed as `$1`:
 - `absolute` (default): pass an absolute path.
 - `relative`: pass a path relative to the output's "destination root", and run the script with `$PWD` set to that root.
 
-For folder output, the destination root is your configured destination folder. For Booklore output, it's the local upload folder.
+For folder output, the destination root is your configured destination folder.
 
 Example (folder destination is `/data/library/books`, and the imported file ended up in `Isaac Asimov/Foundation/Foundation.epub`):
 
@@ -192,4 +191,3 @@ Note: if the target is the destination folder itself, `relative` mode may pass `
 ## Notes And Caveats
 
 - **Hardlinks and torrents:** if you use hardlinking to keep seeding, avoid scripts that modify file contents, since hardlinked files share data with the seeding copy.
-- **Booklore output mode:** scripts run after upload. `$1` will point at the local uploaded file (or staging folder).

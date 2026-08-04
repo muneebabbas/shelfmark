@@ -204,7 +204,7 @@ volumes:
 
 ### Multi-User Support
 
-With any authentication method enabled, Shelfmark supports multi-user management with distinct roles: download-capable users, request-only users, and administrators. Users can have per-user settings for download destinations, email recipients, and notification preferences. Request-only users can add Books to their Library and submit book-level Requests for admin fulfilment, but cannot search or select releases on their own. Download-capable users can search releases and queue Downloads directly. Administrators manage users and requests, and can configure request policies per source to control whether users download directly, must submit a request, or are blocked entirely.
+With any authentication method enabled, Shelfmark supports multi-user management with distinct roles: download-capable users, request-only users, and administrators. Users can have per-user settings for a Send-to-Kindle recipient and personal notification preferences. Request-only users can add Books to their Library and submit book-level Requests for admin fulfilment, but cannot search or select releases on their own. Download-capable users can search releases and queue Downloads directly. Administrators manage users and requests, and can configure request policies per source to control whether users download directly, must submit a request, or are blocked entirely.
 
 ## Project Scope
 
