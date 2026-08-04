@@ -83,6 +83,56 @@ def test_terminal_snapshot_transfers_direct_download_to_immutable_plan(
         main_module.backend.book_queue.cancel_download(task.task_id)
 
 
+def test_multiformat_single_variant_across_folders_is_whole_release(
+    main_module, monkeypatch, tmp_path
+):
+    """A one-variant-per-format release (epub+mobi+azw3 in folders, plus junk)
+    skips the collection matcher and imports every book file as a whole release."""
+    owner = main_module.user_db.create_user(username=f"owner-{uuid.uuid4().hex[:8]}", role="user")
+    book = _book(main_module)
+    source = tmp_path / "retained"
+    (source / "epub").mkdir(parents=True)
+    (source / "Mobi").mkdir()
+    (source / "azw3").mkdir()
+    (source / "epub" / "Dune 01 Dune - Frank Herbert.epub").write_bytes(b"epub")
+    (source / "Mobi" / "Dune 01 Dune - Frank Herbert.mobi").write_bytes(b"mobi")
+    (source / "azw3" / "Dune 01 Dune - Frank Herbert.azw3").write_bytes(b"azw3")
+    (source / "Dune.nfo").write_bytes(b"nfo")
+    (source / "cover.jpg").write_bytes(b"jpg")
+    destination = tmp_path / "destination"
+    monkeypatch.setattr(
+        main_module.app_config,
+        "get",
+        lambda key, default=None, **_kwargs: str(destination) if key == "DESTINATION" else default,
+    )
+    task = DownloadTask(
+        task_id=f"import-{uuid.uuid4().hex[:8]}",
+        source="direct_download",
+        source_release_key=f"direct:{uuid.uuid4().hex}",
+        title=book["title"],
+        user_id=owner["id"],
+        username=owner["username"],
+        library_book_id=book["id"],
+        download_path=str(source),
+    )
+
+    assert main_module.backend.book_queue.add(task) is True
+    try:
+        main_module.backend.book_queue.update_status(task.task_id, QueueStatus.COMPLETE)
+        activity = main_module.import_activity_service.get_by_task_id(task.task_id)
+        assert activity["state"] == "completed"
+        assert {s["evidence"]["match"] for s in activity["selections"]} == {"whole-release"}
+        assert len(activity["selections"]) == 3
+        stems = {Path(s["planned_output_path"]).name for s in activity["selections"]}
+        assert stems == {
+            "Dune 01 Dune - Frank Herbert.epub",
+            "Dune 01 Dune - Frank Herbert.mobi",
+            "Dune 01 Dune - Frank Herbert.azw3",
+        }
+    finally:
+        main_module.backend.book_queue.cancel_download(task.task_id)
+
+
 def test_terminal_snapshot_fails_when_a_planned_member_is_unavailable(
     main_module, monkeypatch, tmp_path
 ):

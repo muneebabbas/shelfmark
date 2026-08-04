@@ -267,9 +267,7 @@ def test_render_message_is_test_uses_test_subject():
 
 
 def test_build_book_url_falls_back_to_relative_without_base_url(monkeypatch):
-    monkeypatch.setattr(
-        notifications_module.app_config, "get", _conf_get("", "")
-    )
+    monkeypatch.setattr(notifications_module.app_config, "get", _conf_get("", ""))
     assert notifications_module._build_book_url(17) == "/library/17"
 
 
@@ -307,9 +305,7 @@ def test_html_email_includes_absolute_link_and_book_card(monkeypatch):
 
 
 def test_html_email_hides_book_card_without_book(monkeypatch):
-    monkeypatch.setattr(
-        notifications_module.app_config, "get", _conf_get("", "")
-    )
+    monkeypatch.setattr(notifications_module.app_config, "get", _conf_get("", ""))
     context = notifications_module.NotificationContext(
         event=notifications_module.NotificationEvent.DOWNLOAD_COMPLETE,
         title="A Book",
@@ -338,4 +334,3 @@ def test_html_email_test_template_renders_sample_card(monkeypatch):
     assert "https://shelfmark.example.com/library" in html
     assert "No cover" in html
     assert "View in Library" in html
-

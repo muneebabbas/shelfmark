@@ -1361,7 +1361,7 @@ def _record_source_members(task: Any) -> dict[int, Path]:
 
 
 def _transfer_default_import_selection(task: Any) -> None:
-    """Default-match every supported retained member and transfer its persisted plan."""
+    """Auto-select exact-affirmative matches among retained members, then transfer."""
     if import_activity_service is None:
         return
     activity_id = normalize_positive_int(getattr(task, "import_activity_id", None))
@@ -1372,16 +1372,51 @@ def _transfer_default_import_selection(task: Any) -> None:
     if activity is None:
         return
     if not activity["selections"]:
+        from shelfmark.core.member_matcher import (
+            auto_selections,
+            book_evidence_from_snapshot,
+            extract_epub_metadata,
+            is_single_variant_release,
+        )
         from shelfmark.download.postprocess.scan import get_supported_formats
 
         supported = set(get_supported_formats(getattr(task, "content_type", None)))
-        selections = [
-            {"source_member_id": member["id"], "evidence": {"match": "default-all-supported"}}
+        members = [
+            member
             for member in import_activity_service.source_members(
                 source_release_id=activity["source_release_id"]
             )
             if member["id"] in members_by_id and member["format"] in supported
         ]
+        if is_single_variant_release(members):
+            # One file per (admin-configured) book format, wherever they sit in the
+            # folder tree, counts as a single-book torrent: import the whole release
+            # and skip the collection matcher. Non-book files are already excluded.
+            selections = [
+                {"source_member_id": member["id"], "evidence": {"match": "whole-release"}}
+                for member in members
+            ]
+        else:
+            book = book_evidence_from_snapshot(activity["book_snapshot"])
+            selections = auto_selections(
+                book,
+                members,
+                get_embedded=(
+                    lambda member: (
+                        extract_epub_metadata(members_by_id[member["id"]])
+                        if member["format"] == "epub"
+                        else None
+                    )
+                ),
+            )
+            if not selections:
+                logger.warning(
+                    "No source members auto-matched for import task %s (book %s); "
+                    "leaving release available for manual review",
+                    task.task_id,
+                    activity["book_snapshot"].get("title"),
+                )
+                return
         activity = import_activity_service.plan_import(
             activity_id=activity_id,
             storage_root=Path(str(app_config.get("DESTINATION", "/books"))),

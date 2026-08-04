@@ -482,10 +482,10 @@ def _html_cta_button(url: str, title: object, label: str = "View in Library") ->
         '<div style="margin-top:26px;text-align:center;">'
         f'<a href="{_html_escape(url)}" '
         'style="display:inline-block;background:#7c3aed;color:#ffffff;padding:13px 28px;'
-        'border-radius:8px;font-size:15px;font-weight:600;text-decoration:none;'
+        "border-radius:8px;font-size:15px;font-weight:600;text-decoration:none;"
         f'text-align:center;">{_html_escape(label)}</a>'
         '<p style="margin:10px 0 0;font-size:12px;color:#9ca3af;">'
-        f'{_html_escape(title)} — opens in your Shelfmark library</p>'
+        f"{_html_escape(title)} — opens in your Shelfmark library</p>"
         "</div>"
     )
 
@@ -518,7 +518,7 @@ def _html_book_card(context: NotificationContext, cta_url: str) -> str:
     else:
         cover_html = (
             '<div style="width:112px;height:168px;border-radius:10px;flex-shrink:0;'
-            'background:#ede9fe;display:flex;align-items:center;justify-content:center;'
+            "background:#ede9fe;display:flex;align-items:center;justify-content:center;"
             'color:#7c3aed;font-size:12px;font-weight:600;letter-spacing:0.05em;">'
             "No cover</div>"
         )
@@ -547,11 +547,10 @@ def _html_book_card(context: NotificationContext, cta_url: str) -> str:
     )
 
     metadata_json = book.get("metadata_json") or {}
-    display_fields = (
-        metadata_json.get("display_fields")
-        if isinstance(metadata_json, dict) and isinstance(metadata_json.get("display_fields"), list)
-        else []
+    display_fields_value = (
+        metadata_json.get("display_fields") if isinstance(metadata_json, dict) else None
     )
+    display_fields = display_fields_value if isinstance(display_fields_value, list) else []
     chips: list[str] = []
     for field in display_fields[:3]:
         if not isinstance(field, dict):
@@ -561,7 +560,7 @@ def _html_book_card(context: NotificationContext, cta_url: str) -> str:
         if label and value:
             chips.append(
                 '<span style="display:inline-block;background:#f5f3ff;color:#6d28d9;'
-                'border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;'
+                "border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;"
                 f'margin:0 6px 6px 0;">{_html_escape(label)}: {_html_escape(value)}</span>'
             )
     chips_html = f'<div style="margin-top:14px;">{"".join(chips)}</div>' if chips else ""
@@ -569,18 +568,18 @@ def _html_book_card(context: NotificationContext, cta_url: str) -> str:
     info_html = (
         '<div style="min-width:0;flex:1;">'
         f'<h2 style="margin:0;font-size:22px;font-weight:700;color:#111827;line-height:1.3;">{title}</h2>'
-        + (f'<p style="margin:4px 0 0;font-size:15px;color:#6b7280;line-height:1.4;">{subtitle}</p>' if subtitle else "")
+        + (
+            f'<p style="margin:4px 0 0;font-size:15px;color:#6b7280;line-height:1.4;">{subtitle}</p>'
+            if subtitle
+            else ""
+        )
         + f'<p style="margin:8px 0 0;font-size:13px;font-weight:600;color:#374151;">{author}</p>'
         + meta_html
         + chips_html
         + "</div>"
     )
 
-    description = (
-        metadata_json.get("description")
-        if isinstance(metadata_json, dict)
-        else None
-    )
+    description = metadata_json.get("description") if isinstance(metadata_json, dict) else None
     description_html = ""
     if description:
         description_text = str(description).strip()
@@ -604,7 +603,7 @@ def _html_book_card(context: NotificationContext, cta_url: str) -> str:
         'style="width:100%;"><tr>'
         '<td style="vertical-align:top;padding-right:28px;width:112px;max-width:112px;">'
         + cover_html
-        + "</td><td style=\"vertical-align:top;\">"
+        + '</td><td style="vertical-align:top;">'
         + info_html
         + "</td></tr></table>"
     )

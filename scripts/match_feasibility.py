@@ -1,0 +1,117 @@
+"""Feasibility demonstration: can static matching auto-select only exact members?
+
+Runs the exact-affirmative matcher (``shelfmark.core.member_matcher``) over the
+reference Dune and Expanse collections against the locally-seeded Books and
+prints which retained source members would be auto-selected.
+
+Usage:
+    uv run --env-file shelfmark/.env python scripts/match_feasibility.py [--db PATH] [--dune-ids 22] [--expanse-ids 23 24]
+
+By default reads BOOK 22 (Dune), 23 & 24 (The Expanse) from the disposable
+local library database at .local/config/users.db.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import sqlite3
+import sys
+from pathlib import Path
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPOSITORY_ROOT))
+os.environ.setdefault("LOG_ROOT", str(REPOSITORY_ROOT / ".local/log"))
+
+from shelfmark.core.member_matcher import (  # noqa: E402
+    BookEvidence,
+    book_evidence_from_snapshot,
+    evaluate,
+    extract_epub_metadata,
+)
+from tests.fixtures.collections import DUNE_FILES, EXPANSE_FILES  # noqa: E402
+
+
+def load_book(conn: sqlite3.Connection, book_id: int) -> BookEvidence:
+    row = conn.execute("SELECT * FROM books WHERE id = ?", (book_id,)).fetchone()
+    if row is None:
+        msg = f"book {book_id} not found in database"
+        raise SystemExit(msg)
+    return book_evidence_from_snapshot(dict(row))
+
+
+def source_root_for(conn: sqlite3.Connection, book_id: int) -> str | None:
+    row = conn.execute(
+        "SELECT sr.source_root FROM source_releases sr "
+        "JOIN import_activities ia ON ia.source_release_id = sr.id "
+        "WHERE ia.book_id = ? LIMIT 1",
+        (book_id,),
+    ).fetchone()
+    return row["source_root"] if row else None
+
+
+def run(
+    book: BookEvidence,
+    label: str,
+    members: list[tuple[str, str]],
+    *,
+    source_root: str | None = None,
+) -> None:
+    def decide(member_path: str) -> dict:
+        embedded = None
+        if source_root:
+            raw = Path(source_root) / member_path.lstrip("./")
+            if raw.is_file() and raw.suffix.lower() == ".epub":
+                embedded = extract_epub_metadata(raw)
+        return evaluate(book, member_path, embedded=embedded)
+
+    matched = [path for path, _ in members if decide(path)["auto_select"]]
+    print(
+        f"\n[{label}]  {book.title} — {book.author}"
+        f" (series={book.series} pos={book.series_position})"
+    )
+    if source_root:
+        print(f"    source_root: {source_root}  (real embedded metadata active)")
+    print(f"    would auto-select ({len(matched)} of {len(members)} members):")
+    if not matched:
+        print("      (none)")
+    for path in matched:
+        print(f"      AUTO  {path}")
+    for path, _ in members:
+        result = decide(path)
+        if not result["auto_select"]:
+            print(f"      skip  {path}\n            -> {result['reason']}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--db", default=str(Path(".local/config/users.db").resolve()))
+    parser.add_argument("--dune-ids", nargs="*", type=int, default=[22])
+    parser.add_argument("--expanse-ids", nargs="*", type=int, default=[23, 24])
+    args = parser.parse_args()
+
+    conn = sqlite3.connect(args.db)
+    conn.row_factory = sqlite3.Row
+
+    dune_members = [(name, "epub") for name in DUNE_FILES]
+    dune_members += [(name.replace(".epub", ".mobi"), "mobi") for name in DUNE_FILES]
+    expanse_members = [(name, name.rsplit(".", 1)[-1]) for name in EXPANSE_FILES]
+
+    for book_id in args.dune_ids:
+        run(
+            load_book(conn, book_id),
+            f"Dune book {book_id}",
+            dune_members,
+            source_root=source_root_for(conn, book_id),
+        )
+    for book_id in args.expanse_ids:
+        run(
+            load_book(conn, book_id),
+            f"Expanse book {book_id}",
+            expanse_members,
+            source_root=source_root_for(conn, book_id),
+        )
+
+
+if __name__ == "__main__":
+    main()
