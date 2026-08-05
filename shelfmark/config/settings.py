@@ -372,10 +372,11 @@ def general_settings() -> list[SettingsField]:
             key="IMPORT_NEEDS_REVIEW_FORMATS",
             label="Import Formats Requiring Review",
             description=(
-                "When a release imports no files at all, automatically route it to the "
-                "Inbox as needing review if it carries a file of one of these formats. "
-                "Leave empty to require review for any release that imports no files. "
-                "Defaults to epub."
+                "When a release carries a file of one of these formats but that "
+                "format was not imported, automatically route it to the Inbox as "
+                "needing review -- even if other formats were imported. Leave "
+                "empty to require review whenever any present format was not "
+                "imported. Defaults to epub."
             ),
             options=_FORMAT_OPTIONS,
             default=["epub"],

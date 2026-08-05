@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from functools import wraps
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, NoReturn, cast
+from typing import TYPE_CHECKING, Any, Callable, Iterable, NoReturn, cast
 
 from flask import Flask, jsonify, request, send_file, send_from_directory, session
 from flask_cors import CORS
@@ -1369,21 +1369,34 @@ def _record_source_members(task: Any) -> dict[int, Path]:
         return recorded
 
 
-def _should_route_to_needs_review(members: list[dict[str, Any]]) -> bool:
-    """Whether a zero-selection release should enter pending administrator casework.
+def _should_route_to_needs_review(
+    present_formats: Iterable[str], imported_formats: Iterable[str]
+) -> bool:
+    """Whether a release should enter pending administrator casework.
 
-    A release is routed to the Inbox as ``needs review`` when it carries at
-    least one member formatted as one of the configured review-required formats
-    (default ``epub``). The configured set mirrors ``SUPPORTED_FORMATS`` choices;
-    an empty configured set means any release that imported no files is routed.
+    A release is routed to the Inbox as ``needs review`` when the automatic
+    importer failed to import one of the review-required formats (default
+    ``epub``) that the release carried -- even if other formats *were* imported.
+    This lets an administrator intervene whenever a wanted format (typically
+    epub) is present on the release but never made it into the library.
+
+    ``present_formats`` are the retained, supported member formats of the
+    release; ``imported_formats`` are the formats actually selected for import.
+    An empty configured set means every distinct present format is treated as
+    review-required.
     """
     configured = app_config.get("IMPORT_NEEDS_REVIEW_FORMATS", ["epub"])
     if not isinstance(configured, list):
         configured = ["epub"]
     review_formats = {str(item).strip().lower() for item in configured if str(item).strip()}
+    present = {str(item).strip().lower() for item in present_formats if str(item).strip()}
+    imported = {str(item).strip().lower() for item in imported_formats if str(item).strip()}
     if not review_formats:
-        return bool(members)
-    return any(str(member.get("format") or "").lower() in review_formats for member in members)
+        review_formats = present
+    needed = review_formats & present
+    if not needed:
+        return False
+    return not needed <= imported
 
 
 def _transition_activity_to_needs_review(
@@ -1473,21 +1486,29 @@ def _transfer_default_import_selection(task: Any) -> None:
                     )
                 ),
             )
-            if not selections:
-                if _should_route_to_needs_review(members):
-                    _transition_activity_to_needs_review(
-                        activity=activity,
-                        task=task,
-                        activity_id=activity_id,
-                    )
-                else:
-                    logger.warning(
-                        "No source members auto-matched for import task %s (book %s); "
-                        "release carries no review-required format, leaving available for manual review",
-                        task.task_id,
-                        activity["book_snapshot"].get("title"),
-                    )
-                return
+        selected_ids = {selection["source_member_id"] for selection in selections}
+        present_formats = [member["format"] for member in members]
+        imported_formats = [
+            member["format"] for member in members if member["id"] in selected_ids
+        ]
+        if _should_route_to_needs_review(present_formats, imported_formats):
+            # A review-required format (default epub) was present but not imported,
+            # so an administrator should intervene even if other formats landed.
+            _transition_activity_to_needs_review(
+                activity=activity,
+                task=task,
+                activity_id=activity_id,
+            )
+            return
+        if not selections:
+            # Nothing auto-matched and no review-required format is missing:
+            # leave the release available for manual review without importing.
+            logger.warning(
+                "No source members auto-matched for import task %s (book %s)",
+                task.task_id,
+                activity["book_snapshot"].get("title"),
+            )
+            return
         activity = import_activity_service.plan_import(
             activity_id=activity_id,
             storage_root=Path(str(app_config.get("DESTINATION", "/books"))),
