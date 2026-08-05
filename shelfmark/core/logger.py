@@ -1,5 +1,6 @@
 """Logging configuration and custom logger with error tracing."""
 
+import json
 import logging
 import sys
 from collections.abc import Mapping
@@ -122,6 +123,37 @@ def _normalize_log_extra(value: object) -> Mapping[str, object] | None:
     return None
 
 
+# Standard attributes every LogRecord carries; anything else on the record comes
+# from structured `extra={...}` fields and gets rendered as a JSON suffix.
+_STANDARD_RECORD_ATTRS = frozenset(logging.makeLogRecord({}).__dict__.keys())
+
+
+class _StructuredFormatter(logging.Formatter):
+    """Formatter that also renders structured `extra` fields as a JSON suffix.
+
+    The textual message is kept for human readers, while any `extra={...}`
+    fields are appended as JSON so structured values (ids, exception detail)
+    survive into log output for later indexing.
+    """
+
+    def format(self, record: logging.LogRecord) -> str:
+        message = super().format(record)
+        extras = {
+            key: value
+            for key, value in record.__dict__.items()
+            if key not in _STANDARD_RECORD_ATTRS
+            and key not in {"message", "asctime", "taskName"}
+            and not key.startswith("_")
+        }
+        if not extras:
+            return message
+        try:
+            suffix = " " + json.dumps(extras, ensure_ascii=False, default=str)
+        except TypeError, ValueError:
+            suffix = ""
+        return f"{message}{suffix}"
+
+
 def setup_logger(name: str, log_file: Path = LOG_FILE) -> CustomLogger:
     """Set up and configure a logger instance.
 
@@ -141,7 +173,7 @@ def setup_logger(name: str, log_file: Path = LOG_FILE) -> CustomLogger:
     log_level = getattr(logging, LOG_LEVEL, logging.INFO)
     logger.setLevel(log_level)
 
-    formatter = logging.Formatter(
+    formatter = _StructuredFormatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s"
     )
 

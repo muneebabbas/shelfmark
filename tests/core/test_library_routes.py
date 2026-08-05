@@ -438,6 +438,19 @@ def test_list_books_filters_search_and_availability_before_pagination(
     assert needs_files.json["total"] == 1
 
 
+def test_list_books_returns_generic_error_without_leaking_exception(app, user_db, library_service):
+    alice = user_db.create_user(username="alice")
+
+    with patch.object(
+        library_service, "list_library_books", side_effect=OSError("sensitive internal detail")
+    ):
+        response = _authed_client(app, alice).get("/api/library/books")
+
+    assert response.status_code == 500
+    assert response.json == {"error": "Internal server error"}
+    assert "sensitive internal detail" not in response.get_data(as_text=True)
+
+
 def test_list_books_admin_paginates_shared_books_once(app, user_db):
     admin = user_db.create_user(username="admin", role="admin")
     reader = user_db.create_user(username="reader")

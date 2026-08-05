@@ -141,6 +141,25 @@ def test_save_onboarding_settings_enables_selected_release_sources(monkeypatch):
     )
 
 
+def test_save_onboarding_settings_returns_generic_error_without_leaking_exception(monkeypatch):
+    import shelfmark.core.config as app_config
+    import shelfmark.core.onboarding as onboarding
+
+    def _boom(tab_name: str, values: dict[str, object]) -> bool:
+        raise OSError("sensitive onboarding detail")
+
+    monkeypatch.setattr(onboarding, "save_config_file", _boom)
+    monkeypatch.setattr(onboarding, "mark_onboarding_complete", lambda: True)
+    monkeypatch.setattr(app_config.config, "refresh", lambda: None, raising=False)
+
+    result = onboarding.save_onboarding_settings(
+        {"METADATA_PROVIDER": "hardcover", "HARDCOVER_API_KEY": "key"},
+    )
+
+    assert result == {"success": False, "message": "Failed to save onboarding settings"}
+    assert "sensitive onboarding detail" not in result["message"]
+
+
 def test_save_onboarding_settings_skips_hidden_fields(monkeypatch):
     import shelfmark.core.config as app_config
     import shelfmark.core.onboarding as onboarding

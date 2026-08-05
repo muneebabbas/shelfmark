@@ -940,8 +940,11 @@ if _is_debug_enabled():
             logger.error_trace(f"Debug script error: {e}, stdout: {e.stdout}, stderr: {e.stderr}")
             return jsonify({"error": f"Debug script failed: {e.stderr}"}), 500
         except _OPERATIONAL_ERRORS as e:
-            logger.error_trace(f"Debug endpoint error: {e}")
-            return jsonify({"error": str(e)}), 500
+            logger.error_trace(
+                "Debug endpoint error",
+                extra={"exc": e},
+            )
+            return jsonify({"error": "Internal server error"}), 500
 
     @app.route("/api/restart", methods=["GET"])
     @login_required
@@ -1053,8 +1056,11 @@ def api_download_release() -> Response | tuple[Response, int]:
             return jsonify({"status": "queued", "priority": priority})
         return jsonify({"error": error_msg or "Failed to queue release"}), 500
     except _OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Release download error: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error_trace(
+            "Release download error",
+            extra={"exc": e},
+        )
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/api/config", methods=["GET"])
@@ -1137,8 +1143,11 @@ def api_config() -> Response | tuple[Response, int]:
         }
         return jsonify(config)
     except _IMPORT_OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Config error: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error_trace(
+            "Config error",
+            extra={"exc": e},
+        )
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/api/health", methods=["GET"])
@@ -1839,8 +1848,11 @@ def api_status() -> Response | tuple[Response, int]:
             _emit_request_update_events(updated_requests)
         return jsonify(status)
     except _OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Status error: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error_trace(
+            "Status error",
+            extra={"exc": e},
+        )
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/api/covers/<cover_id>", methods=["GET"])
@@ -1903,8 +1915,11 @@ def api_cover(cover_id: str) -> Response | tuple[Response, int]:
         response.headers["Cache-Control"] = "public, max-age=86400"
         response.headers["X-Cache"] = "MISS"
     except _IMPORT_OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Cover fetch error: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error_trace(
+            "Cover fetch error",
+            extra={"exc": e},
+        )
+        return jsonify({"error": "Internal server error"}), 500
     else:
         return response
 
@@ -1952,8 +1967,11 @@ def api_cancel_download(book_id: str) -> Response | tuple[Response, int]:
             return jsonify({"status": "cancelled", "book_id": book_id})
         return jsonify({"error": "Failed to cancel download or book not found"}), 404
     except _OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Cancel download error: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error_trace(
+            "Cancel download error",
+            extra={"exc": e},
+        )
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/api/download/<path:book_id>/retry", methods=["POST"])
@@ -2031,8 +2049,11 @@ def api_retry_download(book_id: str) -> Response | tuple[Response, int]:
 
         return jsonify({"error": error or "Download cannot be retried"}), 409
     except _OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Retry download error: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error_trace(
+            "Retry download error",
+            extra={"exc": e},
+        )
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/api/queue/<path:book_id>/priority", methods=["PUT"])
@@ -2080,8 +2101,11 @@ def api_set_priority(book_id: str) -> Response | tuple[Response, int]:
     except ValueError:
         return jsonify({"error": "Invalid priority value"}), 400
     except _OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Set priority error: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error_trace(
+            "Set priority error",
+            extra={"exc": e},
+        )
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/api/queue/reorder", methods=["POST"])
@@ -2133,8 +2157,11 @@ def api_reorder_queue() -> Response | tuple[Response, int]:
             return jsonify({"status": "reordered", "updated_count": len(book_priorities)})
         return jsonify({"error": "Failed to reorder queue"}), 500
     except _OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Reorder queue error: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error_trace(
+            "Reorder queue error",
+            extra={"exc": e},
+        )
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/api/queue/order", methods=["GET"])
@@ -2164,8 +2191,11 @@ def api_queue_order() -> Response | tuple[Response, int]:
             ]
         return jsonify({"queue": queue_order})
     except _OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Queue order error: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error_trace(
+            "Queue order error",
+            extra={"exc": e},
+        )
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/api/downloads/active", methods=["GET"])
@@ -2195,8 +2225,11 @@ def api_active_downloads() -> Response | tuple[Response, int]:
             ]
         return jsonify({"active_downloads": active_downloads})
     except _OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Active downloads error: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error_trace(
+            "Active downloads error",
+            extra={"exc": e},
+        )
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.errorhandler(404)
@@ -2225,7 +2258,7 @@ def internal_error(error: Exception) -> Response | tuple[Response, int]:
         flask.Response: JSON error message with 500 status.
 
     """
-    logger.error_trace(f"500 error: {error}")
+    logger.error_trace("500 internal server error", extra={"exc": error})
     return jsonify({"error": "Internal server error"}), 500
 
 
@@ -2358,7 +2391,10 @@ def api_login() -> Response | tuple[Response, int]:
                 return _failed_login_response(username, ip_address)
 
             except _OPERATIONAL_ERRORS as e:
-                logger.error_trace(f"Built-in auth error: {e}")
+                logger.error_trace(
+                    "Built-in auth error",
+                    extra={"exc": e},
+                )
                 return jsonify({"error": "Authentication system error"}), 500
 
         # CWA database authentication mode
@@ -2415,14 +2451,20 @@ def api_login() -> Response | tuple[Response, int]:
                 return jsonify({"success": True})
 
             except _OPERATIONAL_ERRORS as e:
-                logger.error_trace(f"CWA database error during login: {e}")
+                logger.error_trace(
+                    "CWA database error during login",
+                    extra={"exc": e},
+                )
                 return jsonify({"error": "Authentication system error"}), 500
 
         # Should not reach here, but handle gracefully
         return jsonify({"error": "Unknown authentication mode"}), 500
 
     except _OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Login error: {e}")
+        logger.error_trace(
+            "Login error",
+            extra={"exc": e},
+        )
         return jsonify({"error": "Login failed"}), 500
 
 
@@ -2451,7 +2493,10 @@ def api_logout() -> Response | tuple[Response, int]:
 
         return jsonify({"success": True})
     except _OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Logout error: {e}")
+        logger.error_trace(
+            "Logout error",
+            extra={"exc": e},
+        )
         return jsonify({"error": "Logout failed"}), 500
 
 
@@ -2526,7 +2571,10 @@ def api_auth_check() -> Response | tuple[Response, int]:
 
         return jsonify(response_data)
     except _OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Auth check error: {e}")
+        logger.error_trace(
+            "Auth check error",
+            extra={"exc": e},
+        )
         return jsonify(
             {
                 "authenticated": False,
@@ -2606,8 +2654,11 @@ def api_metadata_providers() -> Response | tuple[Response, int]:
             }
         )
     except _IMPORT_OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Metadata providers error: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error_trace(
+            "Metadata providers error",
+            extra={"exc": e},
+        )
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/api/metadata/config", methods=["GET"])
@@ -2675,8 +2726,11 @@ def api_metadata_config() -> Response | tuple[Response, int]:
             }
         )
     except _IMPORT_OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Metadata config error: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error_trace(
+            "Metadata config error",
+            extra={"exc": e},
+        )
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/api/metadata/search", methods=["GET"])
@@ -2835,8 +2889,11 @@ def api_metadata_search() -> Response | tuple[Response, int]:
             response_data["source_title"] = search_result.source_title
         return jsonify(response_data)
     except _IMPORT_OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Metadata search error: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error_trace(
+            "Metadata search error",
+            extra={"exc": e},
+        )
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/api/metadata/field-options", methods=["GET"])
@@ -2942,8 +2999,11 @@ def api_metadata_book(provider: str, book_id: str) -> Response | tuple[Response,
     except RuntimeError as e:
         return jsonify({"error": str(e)}), 503
     except (OSError, TypeError, sqlite3.Error) as e:
-        logger.error_trace(f"Metadata book error: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error_trace(
+            "Metadata book error",
+            extra={"exc": e},
+        )
+        return jsonify({"error": "Internal server error"}), 500
 
 
 def _handle_target_errors(
@@ -3258,8 +3318,11 @@ def api_releases() -> Response | tuple[Response, int]:
         logger.warning("Release search unavailable: %s", e)
         return jsonify({"error": str(e)}), 503
     except _IMPORT_OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Releases search error: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error_trace(
+            "Releases search error",
+            extra={"exc": e},
+        )
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/api/release-sources", methods=["GET"])
@@ -3277,8 +3340,11 @@ def api_release_sources() -> Response | tuple[Response, int]:
         sources = list_available_sources()
         return jsonify(sources)
     except _IMPORT_OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Release sources error: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error_trace(
+            "Release sources error",
+            extra={"exc": e},
+        )
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/api/settings", methods=["GET"])
@@ -3303,8 +3369,11 @@ def api_settings_get_all() -> Response | tuple[Response, int]:
         data = serialize_all_settings(include_values=True)
         return jsonify(data)
     except _IMPORT_OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Settings get error: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error_trace(
+            "Settings get error",
+            extra={"exc": e},
+        )
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/api/settings/<tab_name>", methods=["GET"])
@@ -3337,8 +3406,11 @@ def api_settings_get_tab(tab_name: str) -> Response | tuple[Response, int]:
 
         return jsonify(serialize_tab(tab, include_values=True))
     except _IMPORT_OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Settings get tab error: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error_trace(
+            "Settings get tab error",
+            extra={"exc": e},
+        )
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/api/settings/<tab_name>", methods=["PUT"])
@@ -3386,8 +3458,11 @@ def api_settings_update_tab(tab_name: str) -> Response | tuple[Response, int]:
             return jsonify(result)
         return jsonify(result), 400
     except _IMPORT_OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Settings update error: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error_trace(
+            "Settings update error",
+            extra={"exc": e},
+        )
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/api/settings/<tab_name>/action/<action_key>", methods=["POST"])
@@ -3424,8 +3499,11 @@ def api_settings_execute_action(tab_name: str, action_key: str) -> Response | tu
             return jsonify(result)
         return jsonify(result), 400
     except _IMPORT_OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Settings action error: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error_trace(
+            "Settings action error",
+            extra={"exc": e},
+        )
+        return jsonify({"error": "Internal server error"}), 500
 
 
 # =============================================================================
@@ -3450,8 +3528,11 @@ def api_onboarding_get() -> Response | tuple[Response, int]:
         config = get_onboarding_config()
         return jsonify(config)
     except _IMPORT_OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Onboarding get error: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error_trace(
+            "Onboarding get error",
+            extra={"exc": e},
+        )
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/api/onboarding", methods=["POST"])
@@ -3481,8 +3562,11 @@ def api_onboarding_save() -> Response | tuple[Response, int]:
             return jsonify(result)
         return jsonify(result), 400
     except _IMPORT_OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Onboarding save error: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error_trace(
+            "Onboarding save error",
+            extra={"exc": e},
+        )
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route("/api/onboarding/skip", methods=["POST"])
@@ -3500,8 +3584,11 @@ def api_onboarding_skip() -> Response | tuple[Response, int]:
         mark_onboarding_complete()
         return jsonify({"success": True, "message": "Onboarding skipped"})
     except _IMPORT_OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Onboarding skip error: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error_trace(
+            "Onboarding skip error",
+            extra={"exc": e},
+        )
+        return jsonify({"error": "Internal server error"}), 500
 
 
 # Catch-all route for React Router (must be last)
