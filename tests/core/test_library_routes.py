@@ -960,28 +960,40 @@ def test_admin_purge_continues_when_active_download_is_already_unavailable(
     assert library_service.get_book(book_id) is None
 
 
-def test_admin_purge_surfaces_artifact_cleanup_failures(app, user_db, library_service, tmp_path):
+def test_admin_purge_tolerates_directory_download_paths(app, user_db, library_service, tmp_path):
+    """A degenerate release whose download_path is a folder (needs-review case)
+    must not fail the purge: it is skipped as a non-file artifact while the book
+    is detached and removed, leaving the retained source folder untouched."""
     owner = user_db.create_user(username="owner")
     admin = user_db.create_user(username="admin", role="admin")
-    book_id = client_post_book(app, owner, "hardcover", "cleanup-failure")
-    artifact_directory = tmp_path / "artifact-directory"
+    book_id = client_post_book(app, owner, "hardcover", "dir-download-path")
+    artifact_directory = tmp_path / "retained-source"
     artifact_directory.mkdir()
-    _seed_history_row(
+    retained_file = artifact_directory / "book.epub"
+    retained_file.write_bytes(b"content")
+    history_id = _seed_history_row(
         user_db,
-        task_id="cannot-unlink",
+        task_id="directory-download",
         user_id=owner["id"],
         username="owner",
         book_id=book_id,
-        fmt="epub",
+        fmt="",
         download_path=str(artifact_directory),
+    )
+    library_service.link_download_to_user(
+        user_id=owner["id"], book_id=book_id, history_id=history_id
     )
 
     response = _authed_client(app, admin, is_admin=True).delete(
         f"/api/library/books/{book_id}/purge"
     )
 
-    assert response.status_code == 500
-    assert library_service.get_book(book_id) is not None
+    assert response.status_code == 200
+    assert library_service.get_book(book_id) is None
+    history = library_service.get_download_history_row(history_id)
+    assert history["book_id"] is None
+    assert history["download_path"] is None
+    assert retained_file.exists()
 
 
 def test_download_file_gates_on_library_membership(app, user_db, library_service, db_path):
@@ -1304,6 +1316,43 @@ def test_admin_delete_release_removes_files_and_detaches_history(
     assert _authed_client(app, alice).get(f"/api/library/books/{book_id}").json["files"] == []
 
 
+def test_admin_delete_release_with_directory_path_detaches_without_unlinking(
+    app, user_db, library_service, tmp_path
+):
+    """A degenerate release whose download_path is a folder (needs-review case)
+    deletes cleanly: history detaches but the directory contents are untouched."""
+    admin = user_db.create_user(username="admin", role="admin")
+    alice = user_db.create_user(username="alice")
+    book_id = client_post_book(app, alice, "hardcover", "1")
+    source_dir = tmp_path / "books" / str(book_id) / "release-dir"
+    source_dir.mkdir(parents=True, exist_ok=True)
+    member_file = source_dir / "book.epub"
+    member_file.write_bytes(b"content")
+    history_ids = _seed_multi_file_release(
+        user_db,
+        task_id="release-dir",
+        user_id=alice["id"],
+        username="alice",
+        book_id=book_id,
+        files=[("", str(source_dir))],
+    )
+    library_service.link_download_to_user(
+        user_id=alice["id"], book_id=book_id, history_id=history_ids[0]
+    )
+
+    response = _authed_client(app, admin, is_admin=True).delete(
+        f"/api/library/books/{book_id}/downloads/{history_ids[0]}"
+    )
+
+    assert response.status_code == 200
+    row = library_service.get_download_history_row(history_ids[0])
+    assert row is not None
+    assert row["book_id"] is None
+    assert row["download_path"] is None
+    assert not library_service.download_linked_to_user(user_id=alice["id"], history_id=history_ids[0])
+    assert member_file.exists()
+
+
 def test_admin_cannot_delete_in_flight_release(app, user_db, library_service):
     admin = user_db.create_user(username="admin", role="admin")
     alice = user_db.create_user(username="alice")
@@ -1594,3 +1643,34 @@ def test_review_inbox_is_admin_only_and_lists_needs_review(
     assert item["source_key"] == "prowlarr:inbox"
     assert item["state"] == "needs review"
     assert item["evidence"][0]["relative_path"] == "Book.epub"
+
+
+def test_purge_removes_book_needs_review_activities_from_inbox(
+    app, user_db, import_activity_service, tmp_path
+):
+    """Purging a book deletes its pending needs-review activities so they no
+    longer appear as orphaned Inbox items."""
+    admin = user_db.create_user(username="admin", role="admin")
+    book_id = client_post_book(app, admin, "hardcover", "purge-inbox")
+    source_root = tmp_path / "retained"
+    source_root.mkdir()
+    activity = import_activity_service.accept_book_targeted_release(
+        source_key="prowlarr:purge-inbox",
+        source="prowlarr",
+        source_metadata={},
+        task_id="purge-inbox-task",
+        book_id=book_id,
+    )
+    import_activity_service.set_source_root(
+        source_release_id=activity["source_release_id"], source_root=source_root
+    )
+    import_activity_service.needs_review(activity_id=activity["id"])
+    client = _authed_client(app, admin, is_admin=True)
+    assert len(client.get("/api/library/review/inbox").json["items"]) == 1
+
+    response = client.delete(f"/api/library/books/{book_id}/purge")
+
+    assert response.status_code == 200
+    assert import_activity_service.get_by_task_id("purge-inbox-task") is None
+    assert import_activity_service.list_needs_review() == []
+    assert client.get("/api/library/review/inbox").json["items"] == []

@@ -312,8 +312,16 @@ class LibraryService:
                 for row in paths:
                     path = row["download_path"]
                     if isinstance(path, str) and path:
+                        path_obj = Path(path)
+                        if path_obj.is_dir():
+                            # A degenerate release whose download_path is a
+                            # folder (needs-review) is not a file artifact; leave
+                            # the retained source folder and let the DB record be
+                            # detached below.
+                            deleted_paths.append(path)
+                            continue
                         try:
-                            Path(path).unlink(missing_ok=True)
+                            path_obj.unlink(missing_ok=True)
                         except OSError:
                             self._clear_deleted_paths(conn, normalized_book_id, deleted_paths)
                             conn.commit()
@@ -379,6 +387,10 @@ class LibraryService:
         conn.execute(
             "DELETE FROM user_downloads WHERE history_id IN "
             "(SELECT id FROM download_history WHERE book_id = ?)",
+            (book_id,),
+        )
+        conn.execute(
+            "DELETE FROM import_activities WHERE book_id = ?",
             (book_id,),
         )
         if clear_paths:
@@ -758,7 +770,15 @@ class LibraryService:
                     path = normalize_optional_text(row["download_path"])
                     try:
                         if path:
-                            Path(path).unlink(missing_ok=True)
+                            path_obj = Path(path)
+                            if path_obj.is_dir():
+                                # A needs-review / degenerate release whose
+                                # download_path is a folder is not a file
+                                # artifact; leave the folder (it holds the
+                                # retained source) and detach the history row.
+                                deleted_history_ids.append(int(row["id"]))
+                                continue
+                            path_obj.unlink(missing_ok=True)
                     except OSError:
                         # Filesystem deletion cannot be transactional. Detach
                         # artifacts already removed so retrying the remaining

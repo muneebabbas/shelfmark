@@ -1285,8 +1285,10 @@ def _build_download_file_rows(task: Any) -> list[dict[str, Any]]:
     from the immutable import transfer, or defaulted to ``[download_path]`` by
     the orchestrator for single-path output handlers) and derives the
     per-file ``format`` (from the path extension) and ``size`` (from the
-    on-disk file size when stat succeeds) for each row. Returns an empty
-    list when the transfer produced no paths — the sentinel is still
+    on-disk file size when stat succeeds) for each row. Only regular files are
+    kept: directory or missing paths (e.g. a zero-selection / needs-review
+    release whose ``download_path`` is a parent folder) are skipped. Returns an
+    empty list when the transfer produced no file paths — the sentinel is still
     cleared and no file rows are inserted.
     """
     raw_paths = getattr(task, "library_paths", None)
@@ -1305,6 +1307,12 @@ def _build_download_file_rows(task: Any) -> list[dict[str, Any]]:
         file_size: str | None = None
         try:
             path_obj = Path(normalized_path)
+            # Only a regular file is an importable artifact; a directory or
+            # missing path (e.g. zero-selection / needs-review releases that
+            # report their parent folder as download_path) must not be persisted
+            # as a file row.
+            if not path_obj.is_file():
+                continue
             suffix = path_obj.suffix.lstrip(".")
             if suffix:
                 file_format = suffix.lower()
