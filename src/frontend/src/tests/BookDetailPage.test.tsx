@@ -563,6 +563,7 @@ describe('BookDetailPage source review', () => {
                 onFindReleases={() => undefined}
                 onOpenSettings={() => undefined}
                 onShowToast={() => undefined}
+                kindleSender="library@legendpak.com"
               />
             }
           />
