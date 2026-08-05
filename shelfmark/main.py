@@ -1063,6 +1063,13 @@ def api_download_release() -> Response | tuple[Response, int]:
         return jsonify({"error": "Internal server error"}), 500
 
 
+def _resolve_kindle_sender() -> str:
+    """Return the From email address users must whitelist for Send to Kindle."""
+    from shelfmark.download.outputs.email import resolve_email_sender
+
+    return resolve_email_sender()
+
+
 @app.route("/api/config", methods=["GET"])
 @login_required
 def api_config() -> Response | tuple[Response, int]:
@@ -1136,6 +1143,7 @@ def api_config() -> Response | tuple[Response, int]:
             "hardcover_auto_remove_on_download": app_config.get(
                 "HARDCOVER_AUTO_REMOVE_ON_DOWNLOAD", True
             ),
+            "kindle_sender": _resolve_kindle_sender(),
             "settings_enabled": _is_config_dir_writable(),
             "onboarding_complete": _get_onboarding_complete(),
             # Default sort orders

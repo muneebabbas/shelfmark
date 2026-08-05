@@ -78,6 +78,7 @@ describe('BookDetailPage request-only availability', () => {
                 isAdmin={false}
                 onFindReleases={() => undefined}
                 onOpenSettings={() => undefined}
+                kindleSender="library@legendpak.com"
                 onShowToast={() => undefined}
               />
             }
@@ -121,6 +122,7 @@ describe('BookDetailPage request-only availability', () => {
                 isAdmin={false}
                 onFindReleases={() => undefined}
                 onOpenSettings={() => undefined}
+                kindleSender="library@legendpak.com"
                 onShowToast={() => undefined}
               />
             }
@@ -165,6 +167,7 @@ describe('BookDetailPage request-only availability', () => {
                 isAdmin={false}
                 onFindReleases={() => undefined}
                 onOpenSettings={() => undefined}
+                kindleSender="library@legendpak.com"
                 onShowToast={() => undefined}
               />
             }
@@ -213,6 +216,7 @@ describe('BookDetailPage request-only availability', () => {
                 isAdmin={false}
                 onFindReleases={() => undefined}
                 onOpenSettings={() => undefined}
+                kindleSender="library@legendpak.com"
                 onShowToast={() => undefined}
               />
             }
@@ -243,6 +247,7 @@ describe('BookDetailPage request-only availability', () => {
                 isAdmin={false}
                 onFindReleases={() => undefined}
                 onOpenSettings={() => undefined}
+                kindleSender="library@legendpak.com"
                 onShowToast={() => undefined}
               />
             }
@@ -276,6 +281,7 @@ describe('BookDetailPage request-only availability', () => {
                 isAdmin={false}
                 onFindReleases={() => undefined}
                 onOpenSettings={() => undefined}
+                kindleSender="library@legendpak.com"
                 onShowToast={() => undefined}
               />
             }
@@ -332,6 +338,7 @@ describe('BookDetailPage release deletion', () => {
                 isAdmin
                 onFindReleases={() => undefined}
                 onOpenSettings={() => undefined}
+                kindleSender="library@legendpak.com"
                 onShowToast={() => undefined}
               />
             }
@@ -388,6 +395,7 @@ describe('BookDetailPage release deletion', () => {
                 isAdmin
                 onFindReleases={() => undefined}
                 onOpenSettings={() => undefined}
+                kindleSender="library@legendpak.com"
                 onShowToast={() => undefined}
               />
             }
@@ -477,6 +485,7 @@ describe('BookDetailPage source review', () => {
                 isAdmin
                 onFindReleases={() => undefined}
                 onOpenSettings={() => undefined}
+                kindleSender="library@legendpak.com"
                 onShowToast={() => undefined}
               />
             }

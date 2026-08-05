@@ -9,6 +9,7 @@ interface SettingsPageProps {
   onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
   onSettingsSaved: () => void;
   onRefreshAuth: () => Promise<void>;
+  kindleSender: string;
 }
 
 export const SettingsPage = ({
@@ -17,6 +18,7 @@ export const SettingsPage = ({
   onShowToast,
   onSettingsSaved,
   onRefreshAuth,
+  kindleSender,
 }: SettingsPageProps) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const section = resolveSettingsSection(searchParams.get('section'), isAdmin, authMode);
@@ -43,7 +45,11 @@ export const SettingsPage = ({
         )}
       </header>
       {section === 'personal' ? (
-        <SelfSettingsPage onShowToast={onShowToast} onSettingsSaved={onSettingsSaved} />
+        <SelfSettingsPage
+          onShowToast={onShowToast}
+          onSettingsSaved={onSettingsSaved}
+          kindleSender={kindleSender}
+        />
       ) : (
         <AdminSettingsPage
           authMode={authMode}
