@@ -47,6 +47,9 @@ describe('Library page scope', () => {
       if (url === '/api/library/books?limit=25') {
         return Promise.resolve(new Response(JSON.stringify({ books: [] })));
       }
+      if (url === '/api/library/review/inbox') {
+        return Promise.resolve(new Response(JSON.stringify({ items: [] })));
+      }
       const books = available
         ? [
             {
@@ -75,7 +78,7 @@ describe('Library page scope', () => {
     socketListeners.get('library_book_availability')?.();
 
     expect(await screen.findByText('Available book')).not.toBeNull();
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
   });
 
   it('lets an administrator switch between their books and all users books', async () => {

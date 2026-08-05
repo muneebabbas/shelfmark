@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 
 import { useDependencyEffect } from '../hooks/useMountEffect';
 import { getLibraryReviewInbox } from '../services/api';
@@ -16,7 +16,7 @@ const InboxSkeleton = () => (
   </div>
 );
 
-const InboxItemCard = ({ item }: { item: InboxItem }) => {
+const InboxItemCard = ({ item, selected }: { item: InboxItem; selected: boolean }) => {
   const formatCounts = new Map<string, number>();
   for (const member of item.evidence) {
     if (!member.format) continue;
@@ -31,7 +31,12 @@ const InboxItemCard = ({ item }: { item: InboxItem }) => {
   const reviewUrl = bookId ? `/library/${bookId}?review=${item.activity_id}` : null;
 
   return (
-    <li className="rounded-xl border border-(--border-muted) bg-(--bg-soft)">
+    <li
+      data-book-id={bookId ?? undefined}
+      className={`rounded-xl border bg-(--bg-soft) ${
+        selected ? 'border-amber-500/60 ring-2 ring-amber-500/40' : 'border-(--border-muted)'
+      }`}
+    >
       <Link
         to={reviewUrl ?? '/library'}
         className={`flex flex-col gap-2 px-4 py-4 sm:flex-row sm:items-center sm:justify-between ${reviewUrl ? 'hover:bg-(--hover-row)' : ''}`}
@@ -59,6 +64,8 @@ const InboxItemCard = ({ item }: { item: InboxItem }) => {
 export const InboxPage = () => {
   const [items, setItems] = useState<InboxItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { bookId: rawBookId } = useParams<{ bookId: string }>();
+  const selectedBookId = rawBookId ? Number(rawBookId) : undefined;
 
   const load = () => {
     void getLibraryReviewInbox()
@@ -69,6 +76,13 @@ export const InboxPage = () => {
   };
 
   useDependencyEffect(load, []);
+
+  useDependencyEffect(() => {
+    if (selectedBookId === undefined || !items?.length) return;
+    document
+      .querySelector<HTMLElement>(`[data-book-id="${selectedBookId}"]`)
+      ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [items, selectedBookId]);
 
   if (error) {
     return (
@@ -108,7 +122,11 @@ export const InboxPage = () => {
       ) : (
         <ul className="mt-6 space-y-3">
           {items.map((item) => (
-            <InboxItemCard key={item.activity_id} item={item} />
+            <InboxItemCard
+              key={item.activity_id}
+              item={item}
+              selected={item.book_id !== null && item.book_id === selectedBookId}
+            />
           ))}
         </ul>
       )}

@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { useSocket } from '../contexts/SocketContext';
 import { useDependencyEffect, useMountEffect } from '../hooks/useMountEffect';
@@ -31,6 +31,7 @@ import {
   type LibraryFile,
   type ReleaseReviewResponse,
 } from './types';
+import { useNeedsReviewBooks } from './useNeedsReviewBooks';
 
 interface BookDetailPageProps {
   autoFindReleases: boolean;
@@ -866,6 +867,7 @@ export const BookDetailPage = ({
   const [reviewOpenedFromInbox, setReviewOpenedFromInbox] = useState(false);
   const [sourceReviewActivityId, setSourceReviewActivityId] = useState<number | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const needsReview = useNeedsReviewBooks(isAdmin);
   const firstAddIntent = hasAutoFindReleasesIntent(location.state);
   const libraryUrl = `/library${location.search}`;
 
@@ -1051,9 +1053,19 @@ export const BookDetailPage = ({
             </div>
           )}
           <div className="min-w-0 self-end">
-            <p className="text-xs font-semibold tracking-[0.16em] text-emerald-700 uppercase dark:text-emerald-300">
-              {bookMembershipLabel(book.in_my_library)}
-            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-xs font-semibold tracking-[0.16em] text-emerald-700 uppercase dark:text-emerald-300">
+                {bookMembershipLabel(book.in_my_library)}
+              </p>
+              {needsReview.byBookId[book.book_id] !== undefined && (
+                <Link
+                  to={`/inbox/${book.book_id}`}
+                  className="rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300"
+                >
+                  Needs review
+                </Link>
+              )}
+            </div>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight text-(--text)">
               {book.title}
             </h1>

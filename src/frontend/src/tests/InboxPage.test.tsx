@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { InboxPage } from '../library/InboxPage';
@@ -68,5 +68,28 @@ describe('InboxPage', () => {
     );
 
     expect(await screen.findByText('Nothing needs review right now.')).not.toBeNull();
+  });
+
+  it('highlights the item for the book selected via the :bookId route', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(inboxResponse)))),
+    );
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+
+    const { container } = render(
+      <MemoryRouter initialEntries={['/inbox/5']}>
+        <Routes>
+          <Route path="/inbox/:bookId" element={<InboxPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText('Dune');
+    const selected = container.querySelector<HTMLElement>('[data-book-id="5"]');
+    expect(selected).not.toBeNull();
+    expect(selected?.className).toContain('ring-2');
+    expect(scrollIntoView).toHaveBeenCalled();
   });
 });

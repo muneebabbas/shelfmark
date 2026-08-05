@@ -405,6 +405,10 @@ function App() {
               element={isAdmin ? <InboxPage /> : <Navigate to="/library" replace />}
             />
             <Route
+              path="/inbox/:bookId"
+              element={isAdmin ? <InboxPage /> : <Navigate to="/library" replace />}
+            />
+            <Route
               path="/settings"
               element={
                 <SettingsPage

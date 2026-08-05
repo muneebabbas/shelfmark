@@ -7,6 +7,7 @@ import { getLibraryBooks } from '../services/api';
 import { withBasePath } from '../utils/basePath';
 import { LibraryPagination } from './LibraryPagination';
 import type { LibraryBookSummary } from './types';
+import { useNeedsReviewBooks } from './useNeedsReviewBooks';
 
 type FileFilter = 'all' | 'with-files' | 'needs-files';
 type LibraryScope = 'mine' | 'all';
@@ -93,6 +94,7 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
   const page = getPage(searchParams.get('page'));
   const [searchInput, setSearchInput] = useState(query);
   const pageCount = Math.ceil(total / PAGE_SIZE);
+  const needsReview = useNeedsReviewBooks(isAdmin);
 
   const updateParam = (name: string, value: string, defaultValue: string, resetPage = true) => {
     setSearchParams((current) => {
@@ -288,6 +290,11 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
                   {book.title ?? 'Untitled'}
                 </h2>
                 <p className="truncate text-sm opacity-65">{book.author || 'Unknown author'}</p>
+                {needsReview.byBookId[book.book_id] !== undefined && (
+                  <span className="mt-2 inline-block rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                    Needs review
+                  </span>
+                )}
                 {book.formats_on_disk.length > 0 && (
                   <div className="mt-2">
                     <FormatBadges formats={book.formats_on_disk} />
