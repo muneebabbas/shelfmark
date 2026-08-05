@@ -14,6 +14,7 @@ import { FieldWrapper } from './shared';
 interface SelfSettingsPageProps {
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
   onSettingsSaved?: () => void;
+  kindleSender: string;
 }
 
 interface SelfSettingsForm {
@@ -78,7 +79,11 @@ const notificationTransportField: SelectFieldConfig = {
   value: 'email',
 };
 
-export const SelfSettingsPage = ({ onShowToast, onSettingsSaved }: SelfSettingsPageProps) => {
+export const SelfSettingsPage = ({
+  onShowToast,
+  onSettingsSaved,
+  kindleSender,
+}: SelfSettingsPageProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isTestingNotification, setIsTestingNotification] = useState(false);
@@ -210,7 +215,9 @@ export const SelfSettingsPage = ({ onShowToast, onSettingsSaved }: SelfSettingsP
                   'kindle_address',
                   'Send-to-Kindle recipient',
                   values.kindle_address,
-                  'Used only for Send to Kindle. Any email recipient address is allowed.',
+                  kindleSender
+                    ? `In your Amazon Kindle settings, add ${kindleSender} to the approved senders list to receive emails from it.`
+                    : 'Used only for Send to Kindle. Any email recipient address is allowed.',
                 )}
               >
                 <TextField

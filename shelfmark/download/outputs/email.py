@@ -46,6 +46,21 @@ class EmailSmtpConfig:
     subject_template: str = "{Title}"
 
 
+def resolve_email_sender() -> str:
+    """Return the bare From email address used for email output.
+
+    Reads the deployed SMTP config (``EMAIL_FROM``, falling back to the SMTP
+    username when it is a valid email address). Returns an empty string when
+    email is not configured. This is what recipients must whitelist (e.g. in
+    their Amazon Kindle approved-senders list).
+    """
+    try:
+        smtp_config = build_email_smtp_config(_get_email_settings())
+    except EmailOutputError:
+        return ""
+    return parseaddr(smtp_config.from_addr)[1]
+
+
 def _parse_int(value: Any, label: str, *, minimum: int = 1) -> int:
     if value is None or value == "":
         msg = f"{label} is required"

@@ -40,6 +40,7 @@ interface BookDetailPageProps {
   onFindReleases: (book: Book) => void;
   onOpenSettings: () => void;
   onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
+  kindleSender: string;
 }
 
 interface BookDetailLocationState {
@@ -109,13 +110,6 @@ const SendingSpinner = () => (
     <path strokeLinecap="round" d="M21 12a9 9 0 0 0-9-9" />
   </svg>
 );
-
-const kindleSendTitle = (format: string | null, isSending: boolean): string => {
-  if (isSending) return 'Sending to Kindle...';
-  return format?.toLowerCase() === 'epub'
-    ? 'Send this EPUB to Kindle'
-    : 'Send to Kindle is available for EPUB files only';
-};
 
 export const shouldAutoFindReleases = ({
   canFindReleases,
@@ -202,6 +196,7 @@ const AvailableFiles = ({
   onReviewSource,
   advancedOpen,
   onAdvancedOpenChange,
+  kindleSender,
 }: {
   book: BookDetailResponse;
   canFindReleases: boolean;
@@ -214,6 +209,7 @@ const AvailableFiles = ({
   onReviewSource: (file: LibraryFile) => void;
   advancedOpen: boolean;
   onAdvancedOpenChange: (open: boolean) => void;
+  kindleSender: string;
 }) => {
   const [kindleFormat, setKindleFormat] = useState('epub');
   const [sendingKindle, setSendingKindle] = useState<number | 'latest' | null>(null);
@@ -321,6 +317,11 @@ const AvailableFiles = ({
                 `Send ${selectedKindleFormat?.toUpperCase() ?? 'file'} to Kindle`
               )}
             </button>
+            {kindleSender && (
+              <p className="mt-2 flex items-center gap-1 text-xs text-gray-500">
+                Emails come from {kindleSender}
+              </p>
+            )}
             <button
               type="button"
               className="hover-action mt-3 cursor-pointer rounded-md px-2 py-1 text-xs text-emerald-700 underline dark:text-emerald-300"
@@ -406,7 +407,11 @@ const AvailableFiles = ({
                       <button
                         type="button"
                         disabled={file.format?.toLowerCase() !== 'epub' || sendingKindle !== null}
-                        title={kindleSendTitle(file.format, sendingKindle !== null)}
+                        title={
+                          file.format?.toLowerCase() === 'epub'
+                            ? `Email will come from ${kindleSender}`
+                            : 'Send to Kindle is available for EPUB files only'
+                        }
                         aria-label="Send to Kindle"
                         className={`rounded-md p-2 text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-300 ${file.format?.toLowerCase() === 'epub' && sendingKindle === null ? 'hover-action cursor-pointer' : ''}`}
                         onClick={() =>
@@ -842,6 +847,7 @@ export const BookDetailPage = ({
   onFindReleases,
   onOpenSettings,
   onShowToast,
+  kindleSender,
 }: BookDetailPageProps) => {
   const { bookId: rawBookId } = useParams();
   const location = useLocation();
@@ -1113,6 +1119,7 @@ export const BookDetailPage = ({
           }}
           advancedOpen={advancedOpen}
           onAdvancedOpenChange={setAdvancedOpen}
+          kindleSender={kindleSender}
         />
       )}
       <article className="mt-10 max-w-4xl border-t border-(--border-muted) pt-6">
