@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 
 import type {
   MultiSelectFieldConfig,
@@ -147,47 +147,20 @@ function getFilteredSelectOptions(
   return options.filter((opt) => !opt.childOf || opt.childOf === filterValue);
 }
 
-function serializeRowKeyValue(value: unknown): string {
-  if (value === null || value === undefined) {
-    return '';
-  }
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
-  }
-  if (Array.isArray(value)) {
-    return value.map((entry) => serializeRowKeyValue(entry)).join('|');
-  }
-
-  try {
-    return JSON.stringify(value) ?? '';
-  } catch {
-    return '[unserializable]';
-  }
-}
-
 export const TableField = ({ field, value, onChange, disabled }: TableFieldProps) => {
   const isDisabled = disabled ?? false;
 
   const columns = useMemo(() => field.columns ?? [], [field.columns]);
   const rows = useMemo(() => normalizeTableRows(value ?? [], columns), [value, columns]);
-  const rowEntries = useMemo(() => {
-    const rowOccurrences = new Map<string, number>();
+  const rowKeysRef = useRef<string[]>([]);
+  const nextRowKeyRef = useRef(0);
 
-    return rows.map((row) => {
-      const baseKey = columns
-        .map((col) => `${col.key}:${serializeRowKeyValue(row[col.key])}`)
-        .join('||');
-      const occurrence = rowOccurrences.get(baseKey) ?? 0;
-
-      rowOccurrences.set(baseKey, occurrence + 1);
-
-      return {
-        row,
-        key: `${baseKey}::${occurrence}`,
-      };
-    });
-  }, [rows, columns]);
-
+  if (rowKeysRef.current.length > rows.length) {
+    rowKeysRef.current.length = rows.length;
+  }
+  while (rowKeysRef.current.length < rows.length) {
+    rowKeysRef.current.push(`${field.key}-row-${nextRowKeyRef.current++}`);
+  }
   // Use minmax(0, ...) so the grid can shrink inside the settings modal.
   // Use fixed width for delete button column to ensure header/data alignment.
   const gridTemplate = 'sm:grid-cols-(--table-cols)';
@@ -220,6 +193,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
   };
 
   const removeRow = (rowIndex: number) => {
+    rowKeysRef.current.splice(rowIndex, 1);
     const next = rows.filter((_, idx) => idx !== rowIndex);
     commitRows(next);
   };
@@ -254,9 +228,9 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
       </div>
 
       <div className="min-w-0 space-y-3">
-        {rowEntries.map(({ row, key: rowKey }, rowIndex) => (
+        {rows.map((row, rowIndex) => (
           <div
-            key={rowKey}
+            key={rowKeysRef.current[rowIndex]}
             className={`grid grid-cols-1 ${gridTemplate} min-w-0 items-start gap-3`}
             style={{ overflow: 'visible' }}
           >
