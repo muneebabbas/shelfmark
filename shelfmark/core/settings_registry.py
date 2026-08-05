@@ -1017,8 +1017,11 @@ def execute_action(
                         return settings_field.callback(current_values=current_values or {})
                     return settings_field.callback()
                 except Exception as e:
-                    logger.exception("Action %s failed", action_key)
-                    return {"success": False, "message": str(e)}
+                    logger.exception(
+                        "Settings action failed",
+                        extra={"action_key": action_key, "exc": str(e)},
+                    )
+                    return {"success": False, "message": "Action failed"}
             else:
                 return {"success": False, "message": "Action has no callback defined"}
 

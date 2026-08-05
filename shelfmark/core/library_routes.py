@@ -371,8 +371,11 @@ def register_library_routes(
             )
             library_service.add_to_library(user_id=actor.db_user_id, book_id=int(book["id"]))
         except _OPERATIONAL_ERRORS as exc:
-            logger.warning("Library add_book failed: %s", exc)
-            return jsonify({"error": str(exc)}), 500
+            logger.error_trace(
+                "Library add_book failed",
+                extra={"action": "add_book", "user_id": actor.db_user_id, "exc": exc},
+            )
+            return jsonify({"error": "Internal server error"}), 500
 
         book_id = int(book["id"])
         return jsonify(
@@ -416,7 +419,10 @@ def register_library_routes(
                 offset=offset,
             )
         except _OPERATIONAL_ERRORS as exc:
-            return jsonify({"error": str(exc)}), 500
+            logger.error_trace(
+                "Library list_books failed", extra={"action": "list_books", "exc": exc}
+            )
+            return jsonify({"error": "Internal server error"}), 500
 
         files_by_book = library_service.get_files_on_disk_for_books(
             [int(row["id"]) for row in books]
@@ -441,7 +447,11 @@ def register_library_routes(
         try:
             book = library_service.get_book(book_id)
         except _OPERATIONAL_ERRORS as exc:
-            return jsonify({"error": str(exc)}), 500
+            logger.error_trace(
+                "Library book_detail failed",
+                extra={"action": "book_detail", "book_id": book_id, "exc": exc},
+            )
+            return jsonify({"error": "Internal server error"}), 500
         if book is None:
             return _error_response(
                 action=action, status_code=404, error="Book not found", book_id=book_id
@@ -455,7 +465,11 @@ def register_library_routes(
             files = library_service.get_files_on_disk(book_id)
             in_flight = library_service.get_in_flight_files(book_id)
         except _OPERATIONAL_ERRORS as exc:
-            return jsonify({"error": str(exc)}), 500
+            logger.error_trace(
+                "Library book_detail files lookup failed",
+                extra={"action": "book_detail", "book_id": book_id, "exc": exc},
+            )
+            return jsonify({"error": "Internal server error"}), 500
 
         downloadable_history_ids = {
             history_id
@@ -509,7 +523,11 @@ def register_library_routes(
         try:
             library_service.remove_from_library(user_id=actor.db_user_id, book_id=book_id)
         except _OPERATIONAL_ERRORS as exc:
-            return jsonify({"error": str(exc)}), 500
+            logger.error_trace(
+                "Library remove_book failed",
+                extra={"action": "remove_book", "book_id": book_id, "exc": exc},
+            )
+            return jsonify({"error": "Internal server error"}), 500
         return jsonify({"status": "removed"})
 
     @app.route("/api/library/books/<int:book_id>/purge-preview", methods=["GET"])
@@ -528,7 +546,10 @@ def register_library_routes(
                 )
             return jsonify({"users": library_service.get_book_members(book_id)})
         except _OPERATIONAL_ERRORS as exc:
-            logger.warning("Library purge_preview failed for book_id=%s: %s", book_id, exc)
+            logger.error_trace(
+                "Library purge_preview failed",
+                extra={"action": "purge_preview", "book_id": book_id, "exc": exc},
+            )
             return jsonify({"error": "Internal server error"}), 500
 
     @app.route("/api/library/books/<int:book_id>/purge", methods=["DELETE"])
@@ -573,7 +594,11 @@ def register_library_routes(
             files = library_service.get_files_on_disk(book_id)
             book = library_service.get_book(book_id)
         except _OPERATIONAL_ERRORS as exc:
-            return jsonify({"error": str(exc)}), 500
+            logger.error_trace(
+                "Library download_file lookup failed",
+                extra={"action": "download_file", "book_id": book_id, "exc": exc},
+            )
+            return jsonify({"error": "Internal server error"}), 500
 
         def _matches(row: dict[str, Any]) -> bool:
             if history_id is not None and normalize_positive_int(row.get("id")) != history_id:
@@ -653,7 +678,11 @@ def register_library_routes(
                 )
             )
         except _OPERATIONAL_ERRORS as exc:
-            return jsonify({"error": str(exc)}), 500
+            logger.error_trace(
+                "Library send_to_kindle resolve failed",
+                extra={"action": "send_to_kindle", "book_id": book_id, "exc": exc},
+            )
+            return jsonify({"error": "Internal server error"}), 500
         if resolved is None:
             return _error_response(
                 action=action,
@@ -695,11 +724,17 @@ def register_library_routes(
                 subject=Path(download_path).name,
             )
         except EmailOutputError as exc:
-            logger.warning("Send-to-Kindle SMTP failure book=%s: %s", book_id, exc)
-            return jsonify({"error": str(exc)}), 500
+            logger.error_trace(
+                "Send-to-Kindle SMTP failure",
+                extra={"action": "send_to_kindle", "book_id": book_id, "exc": exc},
+            )
+            return jsonify({"error": "Internal server error"}), 500
         except _OPERATIONAL_ERRORS as exc:
-            logger.exception("Send-to-Kindle unexpected error book=%s", book_id)
-            return jsonify({"error": str(exc)}), 500
+            logger.error_trace(
+                "Send-to-Kindle unexpected error",
+                extra={"action": "send_to_kindle", "book_id": book_id, "exc": exc},
+            )
+            return jsonify({"error": "Internal server error"}), 500
 
         return jsonify(
             {
@@ -725,7 +760,11 @@ def register_library_routes(
         try:
             row = library_service.get_download_history_row(history_id)
         except _OPERATIONAL_ERRORS as exc:
-            return jsonify({"error": str(exc)}), 500
+            logger.error_trace(
+                "Library link_download history row lookup failed",
+                extra={"action": "link_download", "history_id": history_id, "exc": exc},
+            )
+            return jsonify({"error": "Internal server error"}), 500
         if row is None or normalize_positive_int(row.get("book_id")) != book_id:
             return _error_response(
                 action=action,
@@ -740,7 +779,16 @@ def register_library_routes(
                 history_id=history_id,
             )
         except _OPERATIONAL_ERRORS as exc:
-            return jsonify({"error": str(exc)}), 500
+            logger.error_trace(
+                "Library link_download link failed",
+                extra={
+                    "action": "link_download",
+                    "book_id": book_id,
+                    "history_id": history_id,
+                    "exc": exc,
+                },
+            )
+            return jsonify({"error": "Internal server error"}), 500
         return jsonify({"status": "linked"})
 
     @app.route(
@@ -763,7 +811,16 @@ def register_library_routes(
                 activity_id=activity_id, book_id=book_id
             )
         except _OPERATIONAL_ERRORS as exc:
-            return jsonify({"error": str(exc)}), 500
+            logger.error_trace(
+                "Library release_review activity lookup failed",
+                extra={
+                    "action": "release_review",
+                    "book_id": book_id,
+                    "activity_id": activity_id,
+                    "exc": exc,
+                },
+            )
+            return jsonify({"error": "Internal server error"}), 500
         if activity is None or activity["state"] != "completed":
             return _error_response(action=action, status_code=404, error="Source release not found")
         source_root = normalize_optional_text(activity["source_release"].get("source_root"))
@@ -941,8 +998,11 @@ def register_library_routes(
                 raise RuntimeError(msg)
             import_activity_service.complete(activity_id=correction["id"])
         except _OPERATIONAL_ERRORS as exc:
-            logger.warning("Library release replacement failed: %s", exc)
-            return jsonify({"error": str(exc)}), 500
+            logger.error_trace(
+                "Library release replacement failed",
+                extra={"action": "replace_release", "book_id": book_id, "exc": exc},
+            )
+            return jsonify({"error": "Internal server error"}), 500
         return jsonify({"status": "completed", "activity_id": correction["id"]})
 
     @app.route("/api/library/books/<int:book_id>/downloads/<int:history_id>", methods=["DELETE"])
@@ -966,7 +1026,11 @@ def register_library_routes(
         try:
             row = library_service.get_download_history_row(history_id)
         except _OPERATIONAL_ERRORS as exc:
-            return jsonify({"error": str(exc)}), 500
+            logger.error_trace(
+                "Library delete_release history row lookup failed",
+                extra={"action": "delete_release", "history_id": history_id, "exc": exc},
+            )
+            return jsonify({"error": "Internal server error"}), 500
         if row is None or normalize_positive_int(row.get("book_id")) != book_id:
             return _error_response(
                 action=action,
@@ -987,7 +1051,16 @@ def register_library_routes(
         try:
             deleted = library_service.delete_release(book_id=book_id, history_id=history_id)
         except _OPERATIONAL_ERRORS as exc:
-            return jsonify({"error": str(exc)}), 500
+            logger.error_trace(
+                "Library delete_release failed",
+                extra={
+                    "action": "delete_release",
+                    "book_id": book_id,
+                    "history_id": history_id,
+                    "exc": exc,
+                },
+            )
+            return jsonify({"error": "Internal server error"}), 500
         if not deleted:
             return _error_response(
                 action=action,
