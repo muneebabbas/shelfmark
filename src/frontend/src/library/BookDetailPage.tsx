@@ -96,6 +96,20 @@ const SendIcon = () => (
   </svg>
 );
 
+const InfoIcon = () => (
+  <svg
+    className="h-3.5 w-3.5 shrink-0"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    aria-hidden="true"
+  >
+    <circle cx="12" cy="12" r="10" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 16v-4M12 8h.01" />
+  </svg>
+);
+
 const SendingSpinner = () => (
   <svg
     className="h-4 w-4 animate-spin"
@@ -110,17 +124,6 @@ const SendingSpinner = () => (
     <path strokeLinecap="round" d="M21 12a9 9 0 0 0-9-9" />
   </svg>
 );
-
-const kindleSendTitle = (format: string | null, isSending: boolean, sender: string): string => {
-  if (isSending) return 'Sending to Kindle...';
-  if (format?.toLowerCase() !== 'epub') {
-    return 'Send to Kindle is available for EPUB files only';
-  }
-  const whitelistNote = sender
-    ? ` Emails come from ${sender} — allow it in your Amazon Kindle settings.`
-    : '';
-  return `Send this EPUB to Kindle.${whitelistNote}`;
-};
 
 export const shouldAutoFindReleases = ({
   canFindReleases,
@@ -314,11 +317,6 @@ const AvailableFiles = ({
             <button
               type="button"
               disabled={!selectedKindleFormat || sendingKindle !== null}
-              title={
-                sendingKindle === 'latest'
-                  ? 'Sending to Kindle...'
-                  : kindleSendTitle(selectedKindleFormat, false, kindleSender)
-              }
               className={`mt-2 flex w-full items-center justify-center gap-2 rounded-md border border-(--border-muted) px-3 py-2 text-sm font-medium text-(--text) disabled:cursor-not-allowed disabled:opacity-50 ${selectedKindleFormat && sendingKindle === null ? 'hover-action cursor-pointer' : ''}`}
               onClick={() =>
                 selectedKindleFormat &&
@@ -330,9 +328,16 @@ const AvailableFiles = ({
                   <SendingSpinner /> Sending to Kindle
                 </>
               ) : (
-                `Send ${selectedKindleFormat?.toUpperCase() ?? 'file'} to Kindle`
+                <>
+                  <InfoIcon /> Send {selectedKindleFormat?.toUpperCase() ?? 'file'} to Kindle
+                </>
               )}
             </button>
+            {kindleSender && (
+              <p className="mt-2 flex items-center gap-1 text-xs text-gray-500">
+                Emails come from {kindleSender}
+              </p>
+            )}
             <button
               type="button"
               className="hover-action mt-3 cursor-pointer rounded-md px-2 py-1 text-xs text-emerald-700 underline dark:text-emerald-300"
@@ -418,7 +423,11 @@ const AvailableFiles = ({
                       <button
                         type="button"
                         disabled={file.format?.toLowerCase() !== 'epub' || sendingKindle !== null}
-                        title={kindleSendTitle(file.format, sendingKindle !== null, kindleSender)}
+                        title={
+                          file.format?.toLowerCase() === 'epub'
+                            ? `Email will come from ${kindleSender}`
+                            : 'Send to Kindle is available for EPUB files only'
+                        }
                         aria-label="Send to Kindle"
                         className={`rounded-md p-2 text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-300 ${file.format?.toLowerCase() === 'epub' && sendingKindle === null ? 'hover-action cursor-pointer' : ''}`}
                         onClick={() =>
