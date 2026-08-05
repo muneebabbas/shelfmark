@@ -1349,7 +1349,9 @@ def test_admin_delete_release_with_directory_path_detaches_without_unlinking(
     assert row is not None
     assert row["book_id"] is None
     assert row["download_path"] is None
-    assert not library_service.download_linked_to_user(user_id=alice["id"], history_id=history_ids[0])
+    assert not library_service.download_linked_to_user(
+        user_id=alice["id"], history_id=history_ids[0]
+    )
     assert member_file.exists()
 
 

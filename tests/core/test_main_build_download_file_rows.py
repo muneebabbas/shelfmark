@@ -8,9 +8,7 @@ import shelfmark.main as main_module
 
 
 def _task(library_paths, download_path):
-    return SimpleNamespace(
-        library_paths=library_paths, download_path=download_path
-    )
+    return SimpleNamespace(library_paths=library_paths, download_path=download_path)
 
 
 def test_builds_rows_for_existing_files(tmp_path):
