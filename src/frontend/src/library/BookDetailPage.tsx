@@ -96,20 +96,6 @@ const SendIcon = () => (
   </svg>
 );
 
-const InfoIcon = () => (
-  <svg
-    className="h-3.5 w-3.5 shrink-0"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    aria-hidden="true"
-  >
-    <circle cx="12" cy="12" r="10" />
-    <path strokeLinecap="round" strokeLinejoin="round" d="M12 16v-4M12 8h.01" />
-  </svg>
-);
-
 const SendingSpinner = () => (
   <svg
     className="h-4 w-4 animate-spin"
@@ -328,9 +314,7 @@ const AvailableFiles = ({
                   <SendingSpinner /> Sending to Kindle
                 </>
               ) : (
-                <>
-                  <InfoIcon /> Send {selectedKindleFormat?.toUpperCase() ?? 'file'} to Kindle
-                </>
+                `Send ${selectedKindleFormat?.toUpperCase() ?? 'file'} to Kindle`
               )}
             </button>
             {kindleSender && (
