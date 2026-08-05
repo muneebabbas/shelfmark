@@ -12,8 +12,39 @@ from shelfmark.download.outputs.email import (
     EmailSmtpConfig,
     _get_email_settings,
     _mask_recipient,
+    resolve_email_sender,
     send_file_to_email,
 )
+
+
+def test_resolve_email_sender_returns_bare_from_email(monkeypatch):
+    monkeypatch.setenv("EMAIL_SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("EMAIL_SMTP_PORT", "587")
+    monkeypatch.setenv("EMAIL_SMTP_SECURITY", "starttls")
+    monkeypatch.setenv("EMAIL_SMTP_USERNAME", "login@example.com")
+    monkeypatch.setenv("EMAIL_SMTP_PASSWORD", "secret")
+    monkeypatch.setenv("EMAIL_FROM", "Library <library@legendpak.com>")
+
+    assert resolve_email_sender() == "library@legendpak.com"
+
+
+def test_resolve_email_sender_falls_back_to_smtp_username_when_no_from(monkeypatch):
+    monkeypatch.setenv("EMAIL_SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("EMAIL_SMTP_PORT", "587")
+    monkeypatch.setenv("EMAIL_SMTP_SECURITY", "starttls")
+    monkeypatch.setenv("EMAIL_SMTP_USERNAME", "sender@example.com")
+    monkeypatch.setenv("EMAIL_SMTP_PASSWORD", "secret")
+    monkeypatch.delenv("EMAIL_FROM", raising=False)
+
+    assert resolve_email_sender() == "sender@example.com"
+
+
+def test_resolve_email_sender_returns_empty_when_email_unconfigured(monkeypatch):
+    monkeypatch.setenv("EMAIL_SMTP_HOST", "smtp.example.com")
+    monkeypatch.delenv("EMAIL_FROM", raising=False)
+    monkeypatch.delenv("EMAIL_SMTP_USERNAME", raising=False)
+
+    assert resolve_email_sender() == ""
 
 
 def test_email_settings_use_environment_when_no_settings_field_is_registered(monkeypatch):

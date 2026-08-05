@@ -40,6 +40,7 @@ interface BookDetailPageProps {
   onFindReleases: (book: Book) => void;
   onOpenSettings: () => void;
   onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
+  kindleSender: string;
 }
 
 interface BookDetailLocationState {
@@ -110,11 +111,15 @@ const SendingSpinner = () => (
   </svg>
 );
 
-const kindleSendTitle = (format: string | null, isSending: boolean): string => {
+const kindleSendTitle = (format: string | null, isSending: boolean, sender: string): string => {
   if (isSending) return 'Sending to Kindle...';
-  return format?.toLowerCase() === 'epub'
-    ? 'Send this EPUB to Kindle'
-    : 'Send to Kindle is available for EPUB files only';
+  if (format?.toLowerCase() !== 'epub') {
+    return 'Send to Kindle is available for EPUB files only';
+  }
+  const whitelistNote = sender
+    ? ` Emails come from ${sender} — allow it in your Amazon Kindle settings.`
+    : '';
+  return `Send this EPUB to Kindle.${whitelistNote}`;
 };
 
 export const shouldAutoFindReleases = ({
@@ -202,6 +207,7 @@ const AvailableFiles = ({
   onReviewSource,
   advancedOpen,
   onAdvancedOpenChange,
+  kindleSender,
 }: {
   book: BookDetailResponse;
   canFindReleases: boolean;
@@ -214,6 +220,7 @@ const AvailableFiles = ({
   onReviewSource: (file: LibraryFile) => void;
   advancedOpen: boolean;
   onAdvancedOpenChange: (open: boolean) => void;
+  kindleSender: string;
 }) => {
   const [kindleFormat, setKindleFormat] = useState('epub');
   const [sendingKindle, setSendingKindle] = useState<number | 'latest' | null>(null);
@@ -307,6 +314,11 @@ const AvailableFiles = ({
             <button
               type="button"
               disabled={!selectedKindleFormat || sendingKindle !== null}
+              title={
+                sendingKindle === 'latest'
+                  ? 'Sending to Kindle...'
+                  : kindleSendTitle(selectedKindleFormat, false, kindleSender)
+              }
               className={`mt-2 flex w-full items-center justify-center gap-2 rounded-md border border-(--border-muted) px-3 py-2 text-sm font-medium text-(--text) disabled:cursor-not-allowed disabled:opacity-50 ${selectedKindleFormat && sendingKindle === null ? 'hover-action cursor-pointer' : ''}`}
               onClick={() =>
                 selectedKindleFormat &&
@@ -406,7 +418,7 @@ const AvailableFiles = ({
                       <button
                         type="button"
                         disabled={file.format?.toLowerCase() !== 'epub' || sendingKindle !== null}
-                        title={kindleSendTitle(file.format, sendingKindle !== null)}
+                        title={kindleSendTitle(file.format, sendingKindle !== null, kindleSender)}
                         aria-label="Send to Kindle"
                         className={`rounded-md p-2 text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-300 ${file.format?.toLowerCase() === 'epub' && sendingKindle === null ? 'hover-action cursor-pointer' : ''}`}
                         onClick={() =>
@@ -842,6 +854,7 @@ export const BookDetailPage = ({
   onFindReleases,
   onOpenSettings,
   onShowToast,
+  kindleSender,
 }: BookDetailPageProps) => {
   const { bookId: rawBookId } = useParams();
   const location = useLocation();
@@ -1113,6 +1126,7 @@ export const BookDetailPage = ({
           }}
           advancedOpen={advancedOpen}
           onAdvancedOpenChange={setAdvancedOpen}
+          kindleSender={kindleSender}
         />
       )}
       <article className="mt-10 max-w-4xl border-t border-(--border-muted) pt-6">

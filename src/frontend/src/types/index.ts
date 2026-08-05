@@ -233,6 +233,7 @@ export interface AppConfig {
   force_combined_search: boolean;
   auto_open_downloads_sidebar: boolean; // Auto-open sidebar when download is queued
   hardcover_auto_remove_on_download: boolean; // Auto-remove from active Hardcover list on download
+  kindle_sender: string; // From email address recipients must whitelist for Send to Kindle
   settings_enabled: boolean; // Whether config directory is mounted and writable
   onboarding_complete: boolean; // Whether the user has completed initial setup
   metadata_default_sort: string; // Default sort for universal mode (from metadata provider)

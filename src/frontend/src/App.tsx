@@ -407,6 +407,7 @@ function App() {
                   onShowToast={showToast}
                   onSettingsSaved={() => void loadConfig()}
                   onRefreshAuth={refreshAuth}
+                  kindleSender={config?.kindle_sender ?? ''}
                 />
               }
             />
@@ -422,6 +423,7 @@ function App() {
                   onFindReleases={setReleaseBook}
                   onOpenSettings={handlePersonalSettingsClick}
                   onShowToast={showToast}
+                  kindleSender={config?.kindle_sender ?? ''}
                 />
               }
             />

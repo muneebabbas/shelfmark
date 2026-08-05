@@ -57,6 +57,7 @@ def test_config_endpoint_uses_user_scope_and_runtime_flags(main_module, client):
         patch("shelfmark.metadata_providers.get_provider_sort_options", return_value=["sort-a"]),
         patch("shelfmark.metadata_providers.get_provider_search_fields", return_value=["field-a"]),
         patch("shelfmark.metadata_providers.get_provider_default_sort", return_value="relevance"),
+        patch("shelfmark.main._resolve_kindle_sender", return_value="library@legendpak.com"),
     ):
         resp = client.get("/api/config")
 
@@ -70,6 +71,7 @@ def test_config_endpoint_uses_user_scope_and_runtime_flags(main_module, client):
     assert data["default_release_source_audiobook"] == "audiobookbay"
     assert data["settings_enabled"] is True
     assert data["metadata_default_sort"] == "relevance"
+    assert data["kindle_sender"] == "library@legendpak.com"
 
     assert ("SHOW_RELEASE_SOURCE_LINKS", None) in calls
     assert ("SHOW_COMBINED_SELECTOR", 42) in calls
