@@ -1488,9 +1488,7 @@ def _transfer_default_import_selection(task: Any) -> None:
             )
         selected_ids = {selection["source_member_id"] for selection in selections}
         present_formats = [member["format"] for member in members]
-        imported_formats = [
-            member["format"] for member in members if member["id"] in selected_ids
-        ]
+        imported_formats = [member["format"] for member in members if member["id"] in selected_ids]
         if _should_route_to_needs_review(present_formats, imported_formats):
             # A review-required format (default epub) was present but not imported,
             # so an administrator should intervene even if other formats landed.
