@@ -2,8 +2,8 @@
 
 set -euo pipefail
 
-LATEST_IMAGE="${LATEST_IMAGE:-ghcr.io/calibrain/shelfmark:latest}"
-LEGACY_IMAGE="${LEGACY_IMAGE:-ghcr.io/calibrain/shelfmark:v1.0.2}"
+LATEST_IMAGE="${LATEST_IMAGE:-ghcr.io/muneebabbas/shelfmark:latest}"
+LEGACY_IMAGE="${LEGACY_IMAGE:-ghcr.io/muneebabbas/shelfmark:v1.0.2}"
 WAIT_SECONDS="${WAIT_SECONDS:-5}"
 STARTUP_TIMEOUT_SECONDS="${STARTUP_TIMEOUT_SECONDS:-120}"
 

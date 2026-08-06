@@ -210,7 +210,7 @@ The workflow producing a failing check is **not enough on its own** — GitHub o
   *Require status checks to pass before merging* → add **`e2e required`**.
 - **or `gh` (admin token):**
   ```bash
-  gh api -X PUT repos/calibrain/shelfmark/branches/main/protection \
+  gh api -X PUT repos/muneebabbas/shelfmark/branches/main/protection \
     -H "Accept: application/vnd.github+json" --input - <<'JSON'
   { "required_status_checks": { "strict": true, "contexts": ["e2e required"] },
     "enforce_admins": true, "required_pull_request_reviews": null, "restrictions": null }

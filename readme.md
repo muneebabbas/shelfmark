@@ -56,7 +56,7 @@ Files can be downloaded in the browser, or sent to Kindle (or another delivery t
 
 1. Download the [docker-compose file](compose/docker-compose.yml):
    ```bash
-   curl -O https://raw.githubusercontent.com/calibrain/shelfmark/main/compose/docker-compose.yml
+   curl -O https://raw.githubusercontent.com/muneebabbas/shelfmark/main/compose/docker-compose.yml
    ```
 
 2. Start the service:
@@ -137,7 +137,7 @@ The full-featured image with all network capabilities included.
 #### Tor Routing
 Optional Tor support for network privacy:
 ```bash
-curl -O https://raw.githubusercontent.com/calibrain/shelfmark/main/compose/docker-compose.tor.yml
+curl -O https://raw.githubusercontent.com/muneebabbas/shelfmark/main/compose/docker-compose.tor.yml
 docker compose -f docker-compose.tor.yml up -d
 ```
 
@@ -150,7 +150,7 @@ docker compose -f docker-compose.tor.yml up -d
 #### WireGuard VPN Routing
 Optional WireGuard support to route all external egress through a VPN tunnel with a fail-closed kill-switch:
 ```bash
-curl -O https://raw.githubusercontent.com/calibrain/shelfmark/main/compose/docker-compose.wireguard.yml
+curl -O https://raw.githubusercontent.com/muneebabbas/shelfmark/main/compose/docker-compose.wireguard.yml
 # place your wg-quick config where the compose mounts /config, as wg0.conf
 docker compose -f docker-compose.wireguard.yml up -d
 ```
@@ -173,7 +173,7 @@ A lighter image without the built-in browser automation. Ideal for:
 - **Audiobooks** - Using Shelfmark primarily for audiobooks
 
 ```bash
-curl -O https://raw.githubusercontent.com/calibrain/shelfmark/main/compose/docker-compose.lite.yml
+curl -O https://raw.githubusercontent.com/muneebabbas/shelfmark/main/compose/docker-compose.lite.yml
 docker compose -f docker-compose.lite.yml up -d
 ```
 
