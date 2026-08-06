@@ -89,7 +89,34 @@ class TestProxyAuthMiddleware:
             assert db_user is not None
             assert db_user["username"] == "proxyuser"
             assert db_user["auth_source"] == "proxy"
+            assert db_user["library_capability"] == "request-only"
             assert main_module.session.permanent is False
+
+    def test_reprovisioning_preserves_adjusted_library_capability(self, main_module):
+        username = f"proxy_adjusted_{uuid4().hex[:8]}"
+        user = main_module.user_db.create_user(username=username, auth_source="proxy")
+        main_module.user_db.update_user(user["id"], library_capability="download-capable")
+
+        with (
+            patch.object(main_module, "get_auth_mode", return_value="proxy"),
+            patch.object(
+                main_module.app_config,
+                "get",
+                side_effect=_config_getter({"PROXY_AUTH_USER_HEADER": "X-Auth-User"}),
+            ),
+            main_module.app.test_request_context(
+                "/api/releases",
+                headers={"X-Auth-User": username},
+            ),
+        ):
+            main_module.session["user_id"] = username
+            main_module.session["db_user_id"] = 99999999
+
+            assert main_module.proxy_auth_middleware() is None
+
+        assert main_module.user_db.get_user(user_id=user["id"])["library_capability"] == (
+            "download-capable"
+        )
 
     def test_reads_remote_user_wsgi_fallback(self, main_module):
         with (

@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS users (
     auth_source   TEXT NOT NULL DEFAULT 'builtin',
     role          TEXT NOT NULL DEFAULT 'user',
     is_active     INTEGER NOT NULL DEFAULT 1,
-    library_capability TEXT NOT NULL DEFAULT 'download-capable',
+    library_capability TEXT NOT NULL DEFAULT 'request-only',
     created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -395,10 +395,10 @@ class UserDB:
         if "library_capability" not in column_names:
             conn.execute(
                 "ALTER TABLE users ADD COLUMN library_capability TEXT "
-                "NOT NULL DEFAULT 'download-capable'"
+                "NOT NULL DEFAULT 'request-only'"
             )
         conn.execute(
-            "UPDATE users SET library_capability = 'download-capable' "
+            "UPDATE users SET library_capability = 'request-only' "
             "WHERE library_capability NOT IN ('download-capable', 'request-only') "
             "OR library_capability IS NULL"
         )
@@ -600,7 +600,7 @@ class UserDB:
         oidc_subject: str | None = None,
         auth_source: str = "builtin",
         role: str = "user",
-        library_capability: str = "download-capable",
+        library_capability: str = "request-only",
     ) -> dict[str, Any]:
         """Create a new user. Raises ValueError if username or oidc_subject already exists."""
         if auth_source not in self._VALID_AUTH_SOURCES:

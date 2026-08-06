@@ -195,7 +195,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         email = (data.get("email") or "").strip() or None
         display_name = (data.get("display_name") or "").strip() or None
         role = data.get("role", "user")
-        library_capability = data.get("library_capability", "download-capable")
+        library_capability = data.get("library_capability", "request-only")
 
         if auth_mode in {AUTH_SOURCE_PROXY, AUTH_SOURCE_CWA}:
             return jsonify(

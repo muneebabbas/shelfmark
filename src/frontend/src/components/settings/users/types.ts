@@ -18,7 +18,7 @@ export const INITIAL_CREATE_FORM: CreateUserFormState = {
   password_confirm: '',
   display_name: '',
   role: 'user',
-  library_capability: 'download-capable',
+  library_capability: 'request-only',
 };
 
 export type UsersPanelRoute =

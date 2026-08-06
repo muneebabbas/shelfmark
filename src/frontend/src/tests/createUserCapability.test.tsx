@@ -8,11 +8,11 @@ import { INITIAL_CREATE_FORM } from '../components/settings/users/types';
 import { UserCreateCard } from '../components/settings/users/UserCard';
 
 describe('local user creation capability', () => {
-  it('defaults new local users to download capable', () => {
-    expect(INITIAL_CREATE_FORM.library_capability).toBe('download-capable');
+  it('defaults new local users to request only', () => {
+    expect(INITIAL_CREATE_FORM.library_capability).toBe('request-only');
   });
 
-  it('lets an administrator select request only for a new local user', async () => {
+  it('lets an administrator select download capable for a new local user', async () => {
     const onChange = vi.fn();
     const user = userEvent.setup();
 
@@ -27,12 +27,12 @@ describe('local user creation capability', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Download capable' }));
     await user.click(screen.getByRole('button', { name: 'Request only' }));
+    await user.click(screen.getByRole('button', { name: 'Download capable' }));
 
     expect(onChange).toHaveBeenCalledWith({
       ...INITIAL_CREATE_FORM,
-      library_capability: 'request-only',
+      library_capability: 'download-capable',
     });
   });
 });
