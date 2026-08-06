@@ -82,7 +82,7 @@ class TestProxyAuthMiddleware:
             result = main_module.proxy_auth_middleware()
             assert result is None
             assert main_module.session.get("user_id") == "proxyuser"
-            assert main_module.session.get("is_admin") is True
+            assert main_module.session.get("is_admin") is False
             db_user_id = main_module.session.get("db_user_id")
             assert db_user_id is not None
             db_user = main_module.user_db.get_user(user_id=db_user_id)
@@ -91,6 +91,28 @@ class TestProxyAuthMiddleware:
             assert db_user["auth_source"] == "proxy"
             assert db_user["library_capability"] == "request-only"
             assert main_module.session.permanent is False
+
+    def test_new_proxy_users_are_regular_without_admin_group(self, main_module):
+        username = f"proxy_regular_{uuid4().hex[:8]}"
+
+        with (
+            patch.object(main_module, "get_auth_mode", return_value="proxy"),
+            patch.object(
+                main_module.app_config,
+                "get",
+                side_effect=_config_getter({"PROXY_AUTH_USER_HEADER": "X-Auth-User"}),
+            ),
+            main_module.app.test_request_context(
+                "/api/releases",
+                headers={"X-Auth-User": username},
+            ),
+        ):
+            assert main_module.proxy_auth_middleware() is None
+            assert main_module.session.get("is_admin") is False
+
+        db_user = main_module.user_db.get_user(username=username)
+        assert db_user is not None
+        assert db_user["role"] == "user"
 
     def test_reprovisioning_preserves_adjusted_library_capability(self, main_module):
         username = f"proxy_adjusted_{uuid4().hex[:8]}"
@@ -134,7 +156,7 @@ class TestProxyAuthMiddleware:
             result = main_module.proxy_auth_middleware()
             assert result is None
             assert main_module.session.get("user_id") == "proxyremote"
-            assert main_module.session.get("is_admin") is True
+            assert main_module.session.get("is_admin") is False
             assert main_module.session.permanent is False
 
     def test_proxy_takes_over_existing_local_username(self, main_module):
@@ -297,6 +319,37 @@ class TestProxyAuthMiddleware:
             result = main_module.proxy_auth_middleware()
             assert result is None
             assert main_module.session.get("is_admin") is True
+
+    def test_missing_admin_group_membership_is_regular(self, main_module):
+        username = f"proxy_nonadmin_{uuid4().hex[:8]}"
+
+        with (
+            patch.object(main_module, "get_auth_mode", return_value="proxy"),
+            patch.object(
+                main_module.app_config,
+                "get",
+                side_effect=_config_getter(
+                    {
+                        "PROXY_AUTH_USER_HEADER": "X-Auth-User",
+                        "PROXY_AUTH_ADMIN_GROUP_HEADER": "X-Auth-Groups",
+                        "PROXY_AUTH_ADMIN_GROUP_NAME": "admins",
+                    }
+                ),
+            ),
+            main_module.app.test_request_context(
+                "/api/releases",
+                headers={
+                    "X-Auth-User": username,
+                    "X-Auth-Groups": "users",
+                },
+            ),
+        ):
+            assert main_module.proxy_auth_middleware() is None
+            assert main_module.session.get("is_admin") is False
+
+        db_user = main_module.user_db.get_user(username=username)
+        assert db_user is not None
+        assert db_user["role"] == "user"
 
 
 class TestLoginRequiredDecorator:

@@ -706,7 +706,7 @@ def proxy_auth_middleware() -> Response | tuple[Response, int] | None:
         # Resolve admin role for proxy sessions.
         # If an admin group is configured, derive from groups header.
         # Otherwise preserve existing DB role for known users and default
-        # first-time users to admin (to avoid lockouts).
+        # first-time users to a regular role.
         admin_group_header = (
             normalize_optional_text(
                 app_config.get("PROXY_AUTH_ADMIN_GROUP_HEADER", "X-Auth-Groups")
@@ -716,7 +716,7 @@ def proxy_auth_middleware() -> Response | tuple[Response, int] | None:
         admin_group_name = (
             normalize_optional_text(app_config.get("PROXY_AUTH_ADMIN_GROUP_NAME", "")) or ""
         )
-        is_admin = True
+        is_admin = False
 
         if admin_group_name:
             groups_header = get_proxy_header(admin_group_header) or ""
