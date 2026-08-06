@@ -7,7 +7,7 @@ Shelfmark is typically deployed with Docker Compose.
 1. Download the compose file from the repository:
 
 ```bash
-curl -O https://raw.githubusercontent.com/calibrain/shelfmark/main/compose/docker-compose.yml
+curl -O https://raw.githubusercontent.com/muneebabbas/shelfmark/main/compose/docker-compose.yml
 ```
 
 2. Start the service:
@@ -24,6 +24,7 @@ docker compose up -d
 
 - For volume and path setup, see [Directory and Volume Setup](configuration.md)
 - For environment-based setup, see [Environment Variables](environment-variables.md)
+- For creating releases and publishing Docker images, see [Release Process](dev/releasing.md)
 - For authentication and user management, see [Users & Requests](users-and-requests.md) and [OIDC](oidc.md)
 
 ## Notes
