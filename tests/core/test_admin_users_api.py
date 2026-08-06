@@ -62,7 +62,7 @@ def test_admin_can_manage_username_password_email_role_and_library_capability(ap
 @pytest.mark.parametrize(
     ("payload", "expected_capability"),
     [
-        ({"username": "default", "password": "password"}, "download-capable"),
+        ({"username": "default", "password": "password"}, "request-only"),
         (
             {
                 "username": "requester",
@@ -121,6 +121,19 @@ def test_admin_can_edit_email_for_externally_authenticated_user(app, user_db):
     assert response.status_code == 200
     assert response.json["email"] == "new@example.com"
     assert user_db.get_user(user_id=user["id"])["identity_email"] == "source@example.com"
+
+
+def test_admin_can_edit_library_capability_for_proxy_user(app, user_db):
+    user = user_db.create_user(username="proxy-user", auth_source="proxy")
+    with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="proxy"):
+        response = _admin_client(app).put(
+            f"/api/admin/users/{user['id']}",
+            json={"library_capability": "download-capable"},
+        )
+
+    assert response.status_code == 200
+    assert response.json["library_capability"] == "download-capable"
+    assert user_db.get_user(user_id=user["id"])["library_capability"] == "download-capable"
 
 
 def test_admin_can_clear_email_with_an_empty_value(app, user_db):

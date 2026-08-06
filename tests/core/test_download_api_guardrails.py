@@ -44,7 +44,11 @@ def _set_authenticated_session(
 
 def _create_user(main_module, *, prefix: str, role: str = "user") -> dict:
     username = f"{prefix}-{uuid.uuid4().hex[:8]}"
-    return main_module.user_db.create_user(username=username, role=role)
+    return main_module.user_db.create_user(
+        username=username,
+        role=role,
+        library_capability="download-capable",
+    )
 
 
 def _add_library_book(main_module, *, user_id: int, provider_book_id: str) -> int:
