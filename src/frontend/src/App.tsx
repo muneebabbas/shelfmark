@@ -22,6 +22,7 @@ import { useRealtimeStatus } from './hooks/useRealtimeStatus';
 import { useRequests } from './hooks/useRequests';
 import { useToast } from './hooks/useToast';
 import { BookDetailPage } from './library/BookDetailPage';
+import { InboxPage } from './library/InboxPage';
 import { LibraryNavigation } from './library/LibraryNavigation';
 import { LibraryPage } from './library/LibraryPage';
 import { SearchPage } from './library/SearchPage';
@@ -377,6 +378,7 @@ function App() {
       <LibraryNavigation
         isOpen={libraryNavigationOpen}
         onClose={() => setLibraryNavigationOpen(false)}
+        isAdmin={isAdmin}
       />
       <div
         className={`library-app-shell flex flex-col${usePinnedMainScrollContainer ? ' min-h-0 overflow-y-auto overscroll-y-contain' : ' flex-1'}`}
@@ -398,6 +400,14 @@ function App() {
             <Route path="/" element={<Navigate to="/library" replace />} />
             <Route path="/library" element={<LibraryPage isAdmin={isAdmin} />} />
             <Route path="/search" element={<SearchPage />} />
+            <Route
+              path="/inbox"
+              element={isAdmin ? <InboxPage /> : <Navigate to="/library" replace />}
+            />
+            <Route
+              path="/inbox/:bookId"
+              element={isAdmin ? <InboxPage /> : <Navigate to="/library" replace />}
+            />
             <Route
               path="/settings"
               element={

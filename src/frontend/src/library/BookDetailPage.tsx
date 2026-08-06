@@ -1,9 +1,10 @@
 import { useCallback, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { useSocket } from '../contexts/SocketContext';
 import { useDependencyEffect, useMountEffect } from '../hooks/useMountEffect';
 import {
+  cancelLibraryReview,
   cancelRequest,
   createLibraryRequest,
   downloadLibraryFile,
@@ -30,6 +31,7 @@ import {
   type LibraryFile,
   type ReleaseReviewResponse,
 } from './types';
+import { useNeedsReviewBooks } from './useNeedsReviewBooks';
 
 interface BookDetailPageProps {
   autoFindReleases: boolean;
@@ -650,7 +652,8 @@ const SourceReview = ({
         <div className="border-b border-(--border-muted) px-4 py-3">
           <p className="font-semibold text-(--text)">Choose files to import</p>
           <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
-            Nothing is selected automatically. Replacing this release imports only checked files.
+            Nothing is selected automatically. Select at least one file to import into immutable
+            storage.
           </p>
         </div>
         <div className="max-h-[min(60vh,36rem)] overflow-y-auto">
@@ -695,7 +698,7 @@ const SourceReview = ({
           role="dialog"
         >
           <div className="w-full max-w-md rounded-xl bg-(--bg) p-6 shadow-xl">
-            <h2 className="text-lg font-semibold text-(--text)">Replace this release?</h2>
+            <h2 className="text-lg font-semibold text-(--text)">Import selected files?</h2>
             <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
               {selected.length} selected file{selected.length === 1 ? '' : 's'} will be imported
               into immutable storage under {review.destination}.
@@ -852,6 +855,7 @@ export const BookDetailPage = ({
   const { bookId: rawBookId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { socket } = useSocket();
   const bookId = Number(rawBookId);
   const [book, setBook] = useState<BookDetailResponse | null>(null);
@@ -860,8 +864,10 @@ export const BookDetailPage = ({
   const [loading, setLoading] = useState(true);
   const [autoOpenedFor, setAutoOpenedFor] = useState<number | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [reviewOpenedFromInbox, setReviewOpenedFromInbox] = useState(false);
   const [sourceReviewActivityId, setSourceReviewActivityId] = useState<number | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const needsReview = useNeedsReviewBooks(isAdmin);
   const firstAddIntent = hasAutoFindReleasesIntent(location.state);
   const libraryUrl = `/library${location.search}`;
 
@@ -907,6 +913,16 @@ export const BookDetailPage = ({
       socket?.off('library_book_availability', onAvailability);
     };
   }, [bookId, load, socket]);
+
+  useDependencyEffect(() => {
+    if (reviewOpenedFromInbox) return;
+    const rawReviewActivityId = searchParams.get('review');
+    const activityId = Number(rawReviewActivityId);
+    if (!rawReviewActivityId || !Number.isInteger(activityId) || activityId < 1) return;
+    setReviewOpenedFromInbox(true);
+    setSourceReviewActivityId(activityId);
+    void navigate(location.pathname, { replace: true });
+  }, [location.pathname, navigate, reviewOpenedFromInbox, searchParams]);
 
   useDependencyEffect(() => {
     if (
@@ -984,16 +1000,23 @@ export const BookDetailPage = ({
         activityId={sourceReviewActivityId}
         onClose={() => setSourceReviewActivityId(null)}
         onDelete={() => {
-          if (!reviewedFile) return;
+          if (reviewedFile) {
+            void mutate(
+              () => deleteLibraryRelease(book.book_id, reviewedFile.history_id),
+              'Release deleted',
+            ).then(() => setSourceReviewActivityId(null));
+            return;
+          }
+          // No relevant files were imported — cancel the pending review.
           void mutate(
-            () => deleteLibraryRelease(book.book_id, reviewedFile.history_id),
-            'Release deleted',
+            () => cancelLibraryReview(book.book_id, sourceReviewActivityId),
+            'Removed from review',
           ).then(() => setSourceReviewActivityId(null));
         }}
         onComplete={async () => {
           await load();
           setSourceReviewActivityId(null);
-          onShowToast('Release replaced', 'success');
+          onShowToast('Release imported', 'success');
         }}
       />
     );
@@ -1030,9 +1053,19 @@ export const BookDetailPage = ({
             </div>
           )}
           <div className="min-w-0 self-end">
-            <p className="text-xs font-semibold tracking-[0.16em] text-emerald-700 uppercase dark:text-emerald-300">
-              {bookMembershipLabel(book.in_my_library)}
-            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-xs font-semibold tracking-[0.16em] text-emerald-700 uppercase dark:text-emerald-300">
+                {bookMembershipLabel(book.in_my_library)}
+              </p>
+              {needsReview.byBookId[book.book_id] !== undefined && (
+                <Link
+                  to={`/inbox/${book.book_id}`}
+                  className="rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300"
+                >
+                  Needs review
+                </Link>
+              )}
+            </div>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight text-(--text)">
               {book.title}
             </h1>

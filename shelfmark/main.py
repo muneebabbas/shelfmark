@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from functools import wraps
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, NoReturn, cast
+from typing import TYPE_CHECKING, Any, Callable, Iterable, NoReturn, cast
 
 from flask import Flask, jsonify, request, send_file, send_from_directory, session
 from flask_cors import CORS
@@ -1293,8 +1293,10 @@ def _build_download_file_rows(task: Any) -> list[dict[str, Any]]:
     from the immutable import transfer, or defaulted to ``[download_path]`` by
     the orchestrator for single-path output handlers) and derives the
     per-file ``format`` (from the path extension) and ``size`` (from the
-    on-disk file size when stat succeeds) for each row. Returns an empty
-    list when the transfer produced no paths — the sentinel is still
+    on-disk file size when stat succeeds) for each row. Only regular files are
+    kept: directory or missing paths (e.g. a zero-selection / needs-review
+    release whose ``download_path`` is a parent folder) are skipped. Returns an
+    empty list when the transfer produced no file paths — the sentinel is still
     cleared and no file rows are inserted.
     """
     raw_paths = getattr(task, "library_paths", None)
@@ -1313,6 +1315,12 @@ def _build_download_file_rows(task: Any) -> list[dict[str, Any]]:
         file_size: str | None = None
         try:
             path_obj = Path(normalized_path)
+            # Only a regular file is an importable artifact; a directory or
+            # missing path (e.g. zero-selection / needs-review releases that
+            # report their parent folder as download_path) must not be persisted
+            # as a file row.
+            if not path_obj.is_file():
+                continue
             suffix = path_obj.suffix.lstrip(".")
             if suffix:
                 file_format = suffix.lower()
@@ -1377,6 +1385,74 @@ def _record_source_members(task: Any) -> dict[int, Path]:
         return recorded
 
 
+def _should_route_to_needs_review(
+    present_formats: Iterable[str], imported_formats: Iterable[str]
+) -> bool:
+    """Whether a release should enter pending administrator casework.
+
+    A release is routed to the Inbox as ``needs review`` when the automatic
+    importer failed to import one of the review-required formats (default
+    ``epub``) that the release carried -- even if other formats *were* imported.
+    This lets an administrator intervene whenever a wanted format (typically
+    epub) is present on the release but never made it into the library.
+
+    ``present_formats`` are the retained, supported member formats of the
+    release; ``imported_formats`` are the formats actually selected for import.
+    An empty configured set means every distinct present format is treated as
+    review-required.
+    """
+    configured = app_config.get("IMPORT_NEEDS_REVIEW_FORMATS", ["epub"])
+    if not isinstance(configured, list):
+        configured = ["epub"]
+    review_formats = {str(item).strip().lower() for item in configured if str(item).strip()}
+    present = {str(item).strip().lower() for item in present_formats if str(item).strip()}
+    imported = {str(item).strip().lower() for item in imported_formats if str(item).strip()}
+    if not review_formats:
+        review_formats = present
+    needed = review_formats & present
+    if not needed:
+        return False
+    return not needed <= imported
+
+
+def _transition_activity_to_needs_review(
+    *, activity: dict[str, Any], task: Any, activity_id: int
+) -> None:
+    """Mark an activity as needing review and raise one administrator alert.
+
+    ``notify_admin`` only dispatches when an admin named this event on a
+    configured target, so repeating transitions never re-send unless an admin
+    deliberately re-triggers it; a pending needs-review activity is a single
+    Inbox item and a single alert.
+    """
+    if import_activity_service is None:
+        return
+    try:
+        transitioned = import_activity_service.needs_review(activity_id=activity_id)
+    except RuntimeError, TypeError, ValueError:
+        logger.warning("Failed to transition import task %s to needs review", task.task_id)
+        return
+    book_snapshot = transitioned.get("book_snapshot") or {}
+    try:
+        notify_admin(
+            NotificationEvent.IMPORT_NEEDS_REVIEW,
+            NotificationContext(
+                event=NotificationEvent.IMPORT_NEEDS_REVIEW,
+                title=str(book_snapshot.get("title") or "Unknown title"),
+                author=str(book_snapshot.get("author") or "Unknown author"),
+                source=normalize_source((transitioned.get("source_release") or {}).get("source")),
+                book_id=normalize_positive_int(book_snapshot.get("id")),
+                content_type=normalize_content_type(getattr(task, "content_type", None))
+                if getattr(task, "content_type", None)
+                else None,
+            ),
+        )
+    except (RuntimeError, TypeError, ValueError) as exc:
+        logger.warning(
+            "Failed to trigger needs-review admin notification for task %s: %s", task.task_id, exc
+        )
+
+
 def _transfer_default_import_selection(task: Any) -> None:
     """Auto-select exact-affirmative matches among retained members, then transfer."""
     if import_activity_service is None:
@@ -1426,14 +1502,27 @@ def _transfer_default_import_selection(task: Any) -> None:
                     )
                 ),
             )
-            if not selections:
-                logger.warning(
-                    "No source members auto-matched for import task %s (book %s); "
-                    "leaving release available for manual review",
-                    task.task_id,
-                    activity["book_snapshot"].get("title"),
-                )
-                return
+        selected_ids = {selection["source_member_id"] for selection in selections}
+        present_formats = [member["format"] for member in members]
+        imported_formats = [member["format"] for member in members if member["id"] in selected_ids]
+        if _should_route_to_needs_review(present_formats, imported_formats):
+            # A review-required format (default epub) was present but not imported,
+            # so an administrator should intervene even if other formats landed.
+            _transition_activity_to_needs_review(
+                activity=activity,
+                task=task,
+                activity_id=activity_id,
+            )
+            return
+        if not selections:
+            # Nothing auto-matched and no review-required format is missing:
+            # leave the release available for manual review without importing.
+            logger.warning(
+                "No source members auto-matched for import task %s (book %s)",
+                task.task_id,
+                activity["book_snapshot"].get("title"),
+            )
+            return
         activity = import_activity_service.plan_import(
             activity_id=activity_id,
             storage_root=Path(str(app_config.get("DESTINATION", "/books"))),
@@ -1591,13 +1680,22 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
     activity_id = normalize_positive_int(getattr(task, "import_activity_id", None))
     if import_activity_service is not None and activity_id is not None:
         try:
-            if effective_final_status == QueueStatus.COMPLETE.value and finalized_download:
+            current_activity = import_activity_service.get_by_task_id(task_id)
+            pending_needs_review = bool(
+                current_activity is not None and current_activity["state"] == "needs review"
+            )
+            if (
+                effective_final_status == QueueStatus.COMPLETE.value
+                and finalized_download
+                and not pending_needs_review
+            ):
                 import_activity_service.complete(activity_id=activity_id)
             elif effective_final_status == QueueStatus.COMPLETE.value:
-                import_activity_service.fail(
-                    activity_id=activity_id,
-                    error_context={"message": finalize_error or "Import finalization failed"},
-                )
+                if not pending_needs_review:
+                    import_activity_service.fail(
+                        activity_id=activity_id,
+                        error_context={"message": finalize_error or "Import finalization failed"},
+                    )
             elif effective_final_status == QueueStatus.CANCELLED.value:
                 import_activity_service.cancel(activity_id=activity_id)
             else:

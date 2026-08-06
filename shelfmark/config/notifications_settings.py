@@ -22,6 +22,7 @@ _EVENT_OPTIONS = [
     {"value": NotificationEvent.REQUEST_CREATED.value, "label": "New request submitted"},
     {"value": NotificationEvent.DOWNLOAD_COMPLETE.value, "label": "Download complete"},
     {"value": NotificationEvent.DOWNLOAD_FAILED.value, "label": "Download failed"},
+    {"value": NotificationEvent.IMPORT_NEEDS_REVIEW.value, "label": "Book needs review"},
 ]
 _EVENT_VALUES = {item["value"] for item in _EVENT_OPTIONS}
 _DEFAULT_TARGET = {"transport": "apprise", "destination": "", "events": []}

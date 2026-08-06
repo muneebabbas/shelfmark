@@ -43,3 +43,7 @@ The script writes only under `.local/`; remove `.local/config/users.db` and `.lo
 ### Frontend interactions
 
 Enabled native buttons inherit the shared `--hover-action` highlight and `cursor: pointer` from `src/frontend/src/styles.css`. Do not override these without a specific interaction requirement; use the existing hover color utilities only for intentional component-specific variants.
+
+### Error responses must not leak stack traces
+
+Never return exception details such as `str(exc)` (which can carry stack-trace/exception internals) to the frontend in API error responses — this is a security issue (CodeQL `py/stack-trace-exposure`). In a route, log the full exception server-side (e.g. `logger.warning(...)`) and respond with a generic user-facing message such as `jsonify({"error": "Internal server error"}), 500`. See the needs-review Inbox work in `shelfmark/core/library_routes.py` for an example. The whole codebase still needs a pass to remove remaining `str(exc)`/`str(e)` responses; see issue #81.

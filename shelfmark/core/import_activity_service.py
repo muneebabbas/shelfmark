@@ -326,7 +326,7 @@ class ImportActivityService:
             conn = self._connect()
             try:
                 activity = self._activity(conn, activity_id)
-                if activity["state"] != "matching" or activity["selections"]:
+                if activity["state"] not in {"matching", "needs review"} or activity["selections"]:
                     msg = "import activity cannot be planned"
                     raise ValueError(msg)
                 for selection in selections:
@@ -400,6 +400,32 @@ class ImportActivityService:
         if activity_id is not None:
             root /= str(activity_id)
         return str(root / Path(*sanitized))
+
+    def needs_review(self, *, activity_id: int) -> dict[str, Any]:
+        """Transition a matching activity to pending administrator casework.
+
+        Kept as a distinct state from ``matching`` so the Inbox can present
+        activities the automatic selector could not import without surfacing
+        them as failures. ``needs review`` is non-terminal: an administrator
+        resolves it by selecting source members and importing in the review
+        workflow.
+        """
+        return self._set_state(activity_id, "needs review")
+
+    def list_needs_review(self) -> list[dict[str, Any]]:
+        """Return pending ``needs review`` activities newest-first."""
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                """
+                SELECT id FROM import_activities
+                WHERE state = 'needs review'
+                ORDER BY updated_at DESC, id DESC
+                """
+            ).fetchall()
+            return [self._activity(conn, int(row["id"])) for row in rows]
+        finally:
+            conn.close()
 
     def fail(self, *, activity_id: int, error_context: dict[str, Any]) -> dict[str, Any]:
         """Retain a retryable failure without changing the activity context."""

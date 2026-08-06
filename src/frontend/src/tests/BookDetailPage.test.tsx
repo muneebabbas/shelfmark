@@ -52,6 +52,32 @@ const book = {
   in_flight: [],
 };
 
+const renderNeedsReviewCheck = (fetchMock: (input: RequestInfo | URL) => Promise<Response>) => {
+  vi.stubGlobal('fetch', fetchMock);
+  return render(
+    <MemoryRouter initialEntries={['/library/1']}>
+      <Routes>
+        <Route
+          path="/library/:bookId"
+          element={
+            <BookDetailPage
+              autoFindReleases={false}
+              canFindReleases
+              canDeleteReleases
+              isRequestOnly={false}
+              isAdmin
+              onFindReleases={() => undefined}
+              onOpenSettings={() => undefined}
+              onShowToast={() => undefined}
+              kindleSender="library@legendpak.com"
+            />
+          }
+        />
+      </Routes>
+    </MemoryRouter>,
+  );
+};
+
 describe('BookDetailPage request-only availability', () => {
   afterEach(() => {
     cleanup();
@@ -515,5 +541,120 @@ describe('BookDetailPage source review', () => {
         expect.objectContaining({ method: 'POST', body: JSON.stringify({ member_ids: [7, 8] }) }),
       );
     });
+  });
+
+  it('auto-opens the source review when arriving from the Inbox with a review param', async () => {
+    const user = userEvent.setup();
+    const reviewBook = { ...book, files: [] };
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith('/releases/22/review')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              activity_id: 22,
+              source: 'prowlarr',
+              source_key: 'prowlarr:source',
+              destination: '/books',
+              members: [
+                {
+                  id: 7,
+                  relative_path: 'epub/Dune.epub',
+                  format: 'epub',
+                  size: 1024,
+                  available: true,
+                  evidence: {},
+                  evidence_summary: 'No prior selection evidence',
+                },
+              ],
+            }),
+          ),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify(reviewBook)));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/library/1?review=22']}>
+        <Routes>
+          <Route
+            path="/library/:bookId"
+            element={
+              <BookDetailPage
+                autoFindReleases={false}
+                canFindReleases
+                canDeleteReleases
+                isRequestOnly={false}
+                isAdmin
+                onFindReleases={() => undefined}
+                onOpenSettings={() => undefined}
+                onShowToast={() => undefined}
+                kindleSender="library@legendpak.com"
+              />
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('heading', { name: 'Review source files' });
+    const review = await screen.findByRole('button', { name: 'Review selection' });
+    if (!(review instanceof HTMLButtonElement)) throw new Error('Expected selection button');
+    expect(review.disabled).toBe(true);
+
+    await user.click(screen.getByRole('checkbox', { name: 'Select epub/Dune.epub' }));
+    await user.click(await screen.findByRole('button', { name: 'Review selection' }));
+    await user.click(screen.getByRole('button', { name: 'Import 1 file' }));
+  });
+});
+
+describe('BookDetailPage needs-review label', () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    socketListeners.clear();
+  });
+
+  it('shows a Needs review link to the inbox when the book has a pending review', async () => {
+    renderNeedsReviewCheck((url) => {
+      if (url === '/api/library/review/inbox') {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              items: [
+                {
+                  activity_id: 22,
+                  book_id: 1,
+                  book_title: 'Shared Book',
+                  book_author: 'Author',
+                  source: 'prowlarr',
+                  source_key: 'prowlarr:source',
+                  state: 'needs review',
+                  updated_at: null,
+                  evidence: [],
+                },
+              ],
+            }),
+          ),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify(book)));
+    });
+
+    const link = await screen.findByRole('link', { name: 'Needs review' });
+    expect(link).not.toBeNull();
+    expect(link.getAttribute('href')).toBe('/inbox/1');
+  });
+
+  it('omits the Needs review link when the book is not in the inbox', async () => {
+    renderNeedsReviewCheck((url) => {
+      if (url === '/api/library/review/inbox') {
+        return Promise.resolve(new Response(JSON.stringify({ items: [] })));
+      }
+      return Promise.resolve(new Response(JSON.stringify(book)));
+    });
+
+    await screen.findByRole('heading', { name: 'Shared Book' });
+    expect(screen.queryByRole('link', { name: 'Needs review' })).toBeNull();
   });
 });

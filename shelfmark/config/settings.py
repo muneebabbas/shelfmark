@@ -369,6 +369,20 @@ def general_settings() -> list[SettingsField]:
             default=["epub", "mobi", "azw3", "fb2", "djvu", "cbz", "cbr"],
         ),
         MultiSelectField(
+            key="IMPORT_NEEDS_REVIEW_FORMATS",
+            label="Import Formats Requiring Review",
+            description=(
+                "When a release carries a file of one of these formats but that "
+                "format was not imported, automatically route it to the Inbox as "
+                "needing review -- even if other formats were imported. Leave "
+                "empty to require review whenever any present format was not "
+                "imported. Defaults to epub."
+            ),
+            options=_FORMAT_OPTIONS,
+            default=["epub"],
+            env_supported=True,
+        ),
+        MultiSelectField(
             key="SUPPORTED_AUDIOBOOK_FORMATS",
             label="Supported Audiobook Formats",
             description="Audiobook formats to include in search results. ZIP/RAR archives are extracted automatically and audiobook files are used if found.",

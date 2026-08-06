@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 interface LibraryNavigationProps {
   isOpen: boolean;
   onClose: () => void;
+  isAdmin: boolean;
 }
 
 const itemClassName = ({ isActive }: { isActive: boolean }) =>
@@ -10,7 +11,7 @@ const itemClassName = ({ isActive }: { isActive: boolean }) =>
     isActive ? 'bg-violet-500/15 text-violet-700 dark:text-violet-300' : 'hover-surface'
   }`;
 
-export const LibraryNavigation = ({ isOpen, onClose }: LibraryNavigationProps) => (
+export const LibraryNavigation = ({ isOpen, onClose, isAdmin }: LibraryNavigationProps) => (
   <>
     <button
       type="button"
@@ -35,6 +36,11 @@ export const LibraryNavigation = ({ isOpen, onClose }: LibraryNavigationProps) =
         <NavLink to="/search" className={itemClassName} onClick={onClose}>
           Search
         </NavLink>
+        {isAdmin && (
+          <NavLink to="/inbox" className={itemClassName} onClick={onClose}>
+            Inbox
+          </NavLink>
+        )}
         <NavLink to="/settings" className={itemClassName} onClick={onClose}>
           Settings
         </NavLink>
