@@ -694,8 +694,10 @@ def _fetch_email_cover(context: NotificationContext) -> tuple[str, bytes, str] |
                 return None
             source_url = base64.urlsafe_b64decode(encoded_url).decode()
 
+        if source_url is None:
+            return None
         cached = image_cache.fetch_and_cache(cache_id, source_url)
-    except (binascii.Error, OSError, RuntimeError, TypeError, UnicodeDecodeError, ValueError):
+    except binascii.Error, OSError, RuntimeError, TypeError, UnicodeDecodeError, ValueError:
         logger.warning("Could not prepare an inline notification cover")
         return None
 
