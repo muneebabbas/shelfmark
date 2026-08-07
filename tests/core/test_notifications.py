@@ -1,5 +1,6 @@
 """Focused tests for personal and administrator notification delivery."""
 
+import base64
 import smtplib
 from email.utils import parseaddr
 
@@ -362,6 +363,33 @@ def test_personal_email_embeds_fetched_cover(monkeypatch):
     related = [part for part in message.walk() if part.get_content_maintype() == "image"]
     assert len(related) == 1
     assert related[0].get_payload(decode=True) == b"fake-jpeg"
+
+
+def test_inline_cover_fetch_bypasses_private_shelfmark_cover_url(monkeypatch):
+    original_url = "https://img.example.com/cover.jpg"
+    encoded_url = base64.urlsafe_b64encode(original_url.encode()).decode()
+    context = notifications_module.NotificationContext(
+        event=notifications_module.NotificationEvent.REQUEST_FULFILLED,
+        title="The Book",
+        author="Author",
+        book_id=17,
+        book={**_book(None), "cover_url": f"/api/covers/17?url={encoded_url}"},
+    )
+
+    class FakeCache:
+        def get(self, _cache_id):
+            return None
+
+        def fetch_and_cache(self, _cache_id, cover_url):
+            assert cover_url == original_url
+            return b"fake-jpeg", "image/jpeg"
+
+    monkeypatch.setattr("shelfmark.core.image_cache.get_image_cache", lambda: FakeCache())
+
+    cover = notifications_module._fetch_email_cover(context)
+
+    assert cover is not None
+    assert cover[1:] == (b"fake-jpeg", "image/jpeg")
 
 
 def test_html_email_hides_book_card_without_book(monkeypatch):

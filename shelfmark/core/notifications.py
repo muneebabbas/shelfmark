@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import html
 import logging
@@ -13,7 +15,7 @@ from email.message import EmailMessage
 from email.utils import parseaddr
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Protocol, TypeGuard
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 try:
     import apprise
@@ -497,6 +499,11 @@ def _resolve_email_cover_url(cover_url: object) -> str | None:
     return raw
 
 
+def _is_shelfmark_cover_url(cover_url: object) -> bool:
+    raw = str(cover_url or "").strip()
+    return urlsplit(raw).path.rstrip("/").endswith("/api/covers") or "/api/covers/" in raw
+
+
 def _html_cta_button(url: str, title: object, label: str = "View in Library") -> str:
     return (
         '<div style="margin-top:26px;text-align:center;">'
@@ -530,7 +537,10 @@ def _html_book_card(
             f'line-height:1.6;">{_html_escape(_html_action_copy(context)[1])}</p>'
         )
 
-    cover_url = _resolve_email_cover_url(book.get("cover_url"))
+    stored_cover_url = book.get("cover_url")
+    cover_url = _resolve_email_cover_url(stored_cover_url)
+    if _is_shelfmark_cover_url(stored_cover_url) and not cover_cid:
+        cover_url = None
     if cover_url:
         image_src = f"cid:{cover_cid}" if cover_cid else cover_url
         cover_html = (
@@ -636,8 +646,16 @@ def _html_book_card(
 def _email_cover_cid(context: NotificationContext) -> str | None:
     """Return a stable MIME Content-ID for an externally hosted book cover."""
     book = context.book if isinstance(context.book, dict) else None
-    cover_url = _resolve_email_cover_url(book.get("cover_url") if book else None)
-    if not cover_url or not cover_url.startswith(("http://", "https://")):
+    stored_cover_url = book.get("cover_url") if book else None
+    cover_url = (
+        str(stored_cover_url or "").strip()
+        if _is_shelfmark_cover_url(stored_cover_url)
+        else _resolve_email_cover_url(stored_cover_url)
+    )
+    if not cover_url or (
+        not _is_shelfmark_cover_url(stored_cover_url)
+        and not cover_url.startswith(("http://", "https://"))
+    ):
         return None
 
     digest = hashlib.sha256(cover_url.encode()).hexdigest()[:20]
@@ -651,15 +669,33 @@ def _fetch_email_cover(context: NotificationContext) -> tuple[str, bytes, str] |
         return None
 
     book = context.book if isinstance(context.book, dict) else None
-    cover_url = _resolve_email_cover_url(book.get("cover_url") if book else None)
-    if cover_url is None:
+    stored_cover_url = str(book.get("cover_url") or "").strip() if book else ""
+    cover_url = _resolve_email_cover_url(stored_cover_url)
+    is_shelfmark_cover = _is_shelfmark_cover_url(stored_cover_url)
+    if cover_url is None and not is_shelfmark_cover:
         return None
 
     try:
         from shelfmark.core.image_cache import get_image_cache
 
-        cached = get_image_cache().fetch_and_cache(f"email-{cid.removesuffix('@shelfmark.local')}", cover_url)
-    except (OSError, RuntimeError, TypeError, ValueError):
+        image_cache = get_image_cache()
+        source_url = cover_url
+        cache_id = f"email-{cid.removesuffix('@shelfmark.local')}"
+        if is_shelfmark_cover:
+            parsed = urlsplit(stored_cover_url)
+            stored_cache_id = parsed.path.rstrip("/").rsplit("/", 1)[-1]
+            cached = image_cache.get(stored_cache_id)
+            if cached is not None:
+                image_data, content_type = cached
+                return cid, image_data, content_type
+
+            encoded_url = parse_qs(parsed.query).get("url", [None])[0]
+            if not encoded_url:
+                return None
+            source_url = base64.urlsafe_b64decode(encoded_url).decode()
+
+        cached = image_cache.fetch_and_cache(cache_id, source_url)
+    except (binascii.Error, OSError, RuntimeError, TypeError, UnicodeDecodeError, ValueError):
         logger.warning("Could not prepare an inline notification cover")
         return None
 
