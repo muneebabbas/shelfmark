@@ -189,6 +189,12 @@ def test_create_user_can_disable_email_notifications_by_default(user_db, monkeyp
     assert user_db.get_personal_preferences(user["id"])["notifications_enabled"] is False
 
 
+def test_create_user_does_not_enable_notifications_for_invalid_email(user_db):
+    user = user_db.create_user(username="invalid-email", email="@example.com")
+
+    assert user_db.get_personal_preferences(user["id"])["notifications_enabled"] is False
+
+
 def test_initialize_preserves_duplicate_legacy_email_notification_destinations(db_path):
     conn = sqlite3.connect(db_path)
     conn.executescript("""

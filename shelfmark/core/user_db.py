@@ -22,7 +22,10 @@ logger = setup_logger(__name__)
 
 def _is_valid_email(value: str) -> bool:
     parsed = parseaddr(value)[1]
-    return bool(parsed) and "@" in parsed
+    if not parsed or "@" not in parsed:
+        return False
+    local_part, domain = parsed.rsplit("@", 1)
+    return bool(local_part and domain)
 
 
 def _personal_notifications_enabled_by_default() -> bool:
@@ -638,7 +641,6 @@ class UserDB:
                         library_capability,
                     ),
                 )
-                conn.commit()
                 user_id = cursor.lastrowid
                 if not isinstance(user_id, int):
                     msg = "Failed to create user"
