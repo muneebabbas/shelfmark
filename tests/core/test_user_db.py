@@ -165,6 +165,30 @@ def test_initialize_disables_malformed_and_absent_legacy_email_notifications(db_
     assert user_db.get_personal_preferences(2)["notifications_enabled"] is False
 
 
+def test_create_user_enables_email_notifications_by_default(user_db):
+    user = user_db.create_user(username="email-user", email="reader@example.com")
+
+    assert user_db.get_personal_preferences(user["id"]) == {
+        "kindle_address": None,
+        "notifications_enabled": True,
+        "notification_transport": "email",
+        "notification_destination": "reader@example.com",
+    }
+
+
+def test_create_user_can_disable_email_notifications_by_default(user_db, monkeypatch):
+    from shelfmark.core.config import config as app_config
+
+    monkeypatch.setattr(
+        app_config,
+        "get",
+        lambda key, default=None: False if key == "DEFAULT_PERSONAL_NOTIFICATIONS" else default,
+    )
+    user = user_db.create_user(username="email-disabled", email="reader@example.com")
+
+    assert user_db.get_personal_preferences(user["id"])["notifications_enabled"] is False
+
+
 def test_initialize_preserves_duplicate_legacy_email_notification_destinations(db_path):
     conn = sqlite3.connect(db_path)
     conn.executescript("""

@@ -761,11 +761,17 @@ def proxy_auth_middleware() -> Response | tuple[Response, int] | None:
 
             if needs_db_user_sync:
                 role = "admin" if is_admin else "user"
+                proxy_email = (
+                    username
+                    if user_header.casefold() == "cf-access-authenticated-user-email"
+                    else None
+                )
                 db_user, _ = upsert_external_user(
                     user_db,
                     auth_source="proxy",
                     username=username,
                     role=role,
+                    email=proxy_email,
                     collision_strategy="takeover",
                     context="proxy_request",
                 )

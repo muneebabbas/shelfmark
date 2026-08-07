@@ -92,6 +92,35 @@ class TestProxyAuthMiddleware:
             assert db_user["library_capability"] == "request-only"
             assert main_module.session.permanent is False
 
+    def test_cloudflare_email_header_sets_email_and_email_notifications(self, main_module):
+        username = f"proxy_email_{uuid4().hex[:8]}@example.com"
+
+        with (
+            patch.object(main_module, "get_auth_mode", return_value="proxy"),
+            patch.object(
+                main_module.app_config,
+                "get",
+                side_effect=_config_getter(
+                    {"PROXY_AUTH_USER_HEADER": "Cf-Access-Authenticated-User-Email"}
+                ),
+            ),
+            main_module.app.test_request_context(
+                "/api/releases",
+                headers={"Cf-Access-Authenticated-User-Email": username},
+            ),
+        ):
+            assert main_module.proxy_auth_middleware() is None
+
+        db_user = main_module.user_db.get_user(username=username)
+        assert db_user is not None
+        assert db_user["email"] == username
+        assert main_module.user_db.get_personal_preferences(db_user["id"]) == {
+            "kindle_address": None,
+            "notifications_enabled": True,
+            "notification_transport": "email",
+            "notification_destination": username,
+        }
+
     def test_new_proxy_users_are_regular_without_admin_group(self, main_module):
         username = f"proxy_regular_{uuid4().hex[:8]}"
 
