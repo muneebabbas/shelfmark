@@ -645,7 +645,11 @@ class UserDB:
                 if not isinstance(user_id, int):
                     msg = "Failed to create user"
                     raise TypeError(msg)
-                if email and _is_valid_email(email) and _personal_notifications_enabled_by_default():
+                if (
+                    email
+                    and _is_valid_email(email)
+                    and _personal_notifications_enabled_by_default()
+                ):
                     conn.execute(
                         """INSERT INTO user_preferences (
                             user_id, notifications_enabled, notification_transport,
