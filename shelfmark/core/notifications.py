@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import html
 import logging
 import threading
@@ -518,7 +519,9 @@ def _html_footer_link(url: str) -> str:
     )
 
 
-def _html_book_card(context: NotificationContext, cta_url: str) -> str:
+def _html_book_card(
+    context: NotificationContext, cta_url: str, *, cover_cid: str | None = None
+) -> str:
     """Build the book card section (cover, title block, chips, description)."""
     book = context.book if isinstance(context.book, dict) else None
     if book is None:
@@ -529,8 +532,9 @@ def _html_book_card(context: NotificationContext, cta_url: str) -> str:
 
     cover_url = _resolve_email_cover_url(book.get("cover_url"))
     if cover_url:
+        image_src = f"cid:{cover_cid}" if cover_cid else cover_url
         cover_html = (
-            f'<img src="{_html_escape(cover_url)}" alt="{_html_escape(book.get("title"))}" '
+            f'<img src="{_html_escape(image_src)}" alt="{_html_escape(book.get("title"))}" '
             'style="width:112px;height:168px;object-fit:cover;border-radius:10px;'
             'display:block;box-shadow:0 4px 14px rgba(0,0,0,0.14);flex-shrink:0;" />'
         )
@@ -629,7 +633,60 @@ def _html_book_card(context: NotificationContext, cta_url: str) -> str:
     return card_header + description_html + cta_html
 
 
-def _render_html_email(context: NotificationContext) -> str:
+def _email_cover_cid(context: NotificationContext) -> str | None:
+    """Return a stable MIME Content-ID for an externally hosted book cover."""
+    book = context.book if isinstance(context.book, dict) else None
+    cover_url = _resolve_email_cover_url(book.get("cover_url") if book else None)
+    if not cover_url or not cover_url.startswith(("http://", "https://")):
+        return None
+
+    digest = hashlib.sha256(cover_url.encode()).hexdigest()[:20]
+    return f"cover-{digest}@shelfmark.local"
+
+
+def _fetch_email_cover(context: NotificationContext) -> tuple[str, bytes, str] | None:
+    """Fetch a cover for inline email delivery using the existing safe image cache."""
+    cid = _email_cover_cid(context)
+    if cid is None:
+        return None
+
+    book = context.book if isinstance(context.book, dict) else None
+    cover_url = _resolve_email_cover_url(book.get("cover_url") if book else None)
+    if cover_url is None:
+        return None
+
+    try:
+        from shelfmark.core.image_cache import get_image_cache
+
+        cached = get_image_cache().fetch_and_cache(f"email-{cid.removesuffix('@shelfmark.local')}", cover_url)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        logger.warning("Could not prepare an inline notification cover")
+        return None
+
+    if cached is None:
+        logger.warning("Could not prepare an inline notification cover")
+        return None
+    image_data, content_type = cached
+    return cid, image_data, content_type
+
+
+def _attach_email_cover(message: EmailMessage, cover: tuple[str, bytes, str]) -> None:
+    """Attach an image as a related part of the HTML alternative."""
+    cid, image_data, content_type = cover
+    main_type, sub_type = content_type.split("/", 1)
+    html_part = message.get_body(preferencelist=("html",))
+    if html_part is None:
+        raise EmailOutputError("Could not prepare HTML notification")
+    html_part.add_related(
+        image_data,
+        maintype=main_type,
+        subtype=sub_type,
+        cid=f"<{cid}>",
+        filename="cover",
+    )
+
+
+def _render_html_email(context: NotificationContext, *, cover_cid: str | None = None) -> str:
     """Render the shared HTML notification email template.
 
     One template serves every notification action and the test email; only the
@@ -645,6 +702,8 @@ def _render_html_email(context: NotificationContext) -> str:
     header_detail = detail
     if cta_url and not (context.book and isinstance(context.book, dict)):
         header_detail = f"{detail} Open it at {cta_url}."
+
+    rendered = _html_book_card(context, cta_url, cover_cid=cover_cid)
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -669,7 +728,7 @@ def _render_html_email(context: NotificationContext) -> str:
 </tr>
 <tr>
 <td style="padding:28px 32px;">
-{_html_book_card(context, cta_url)}
+ {rendered}
 </td>
 </tr>
 <tr>
@@ -1025,7 +1084,11 @@ def _deliver(
         message["To"] = destination
         message["Subject"] = title
         message.set_content(body)
-        message.add_alternative(_render_html_email(context), subtype="html")
+        cover = _fetch_email_cover(context)
+        cover_cid = cover[0] if cover else None
+        message.add_alternative(_render_html_email(context, cover_cid=cover_cid), subtype="html")
+        if cover:
+            _attach_email_cover(message, cover)
         send_email_message(smtp_config, message)
     except EmailOutputError as exc:
         return {"success": False, "message": str(exc)}

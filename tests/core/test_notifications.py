@@ -304,6 +304,66 @@ def test_html_email_includes_absolute_link_and_book_card(monkeypatch):
     assert "About this book" in html
 
 
+def test_html_email_can_reference_an_inline_cover():
+    context = notifications_module.NotificationContext(
+        event=notifications_module.NotificationEvent.REQUEST_FULFILLED,
+        title="The Book",
+        author="Author",
+        book_id=17,
+        book=_book(None),
+    )
+
+    html = notifications_module._render_html_email(context, cover_cid="cover-123@shelfmark.local")
+
+    assert 'src="cid:cover-123@shelfmark.local"' in html
+    assert "https://img.example.com/cover.jpg" not in html
+
+
+def test_personal_email_embeds_fetched_cover(monkeypatch):
+    smtp_config = type("SmtpConfig", (), {"from_addr": "Shelfmark <sender@example.com>"})()
+    sent_messages = []
+
+    class FakeCache:
+        def fetch_and_cache(self, _cache_id, _cover_url):
+            return b"fake-jpeg", "image/jpeg"
+
+    monkeypatch.setattr(notifications_module, "_get_email_settings", lambda: {})
+    monkeypatch.setattr(
+        notifications_module, "build_email_smtp_config", lambda _settings: smtp_config
+    )
+    monkeypatch.setattr(
+        notifications_module,
+        "send_email_message",
+        lambda _config, message: sent_messages.append(message),
+    )
+    monkeypatch.setattr(
+        "shelfmark.core.image_cache.get_image_cache",
+        lambda: FakeCache(),
+    )
+
+    result = notifications_module._deliver(
+        "email",
+        "reader@example.com",
+        notifications_module.NotificationEvent.REQUEST_FULFILLED,
+        notifications_module.NotificationContext(
+            event=notifications_module.NotificationEvent.REQUEST_FULFILLED,
+            title="The Book",
+            author="Author",
+            book_id=17,
+            book=_book(None),
+        ),
+    )
+
+    assert result == {"success": True, "message": "Notification sent"}
+    message = sent_messages[0]
+    html_part = message.get_body(preferencelist=("html",))
+    assert html_part is not None
+    assert "cid:cover-" in html_part.get_content()
+    related = [part for part in message.walk() if part.get_content_maintype() == "image"]
+    assert len(related) == 1
+    assert related[0].get_payload(decode=True) == b"fake-jpeg"
+
+
 def test_html_email_hides_book_card_without_book(monkeypatch):
     monkeypatch.setattr(notifications_module.app_config, "get", _conf_get("", ""))
     context = notifications_module.NotificationContext(
