@@ -11,6 +11,10 @@ import { ActivityCard } from './ActivityCard';
 import type { DownloadStatusKey } from './activityMappers';
 import { downloadToActivityItem } from './activityMappers';
 import type { ActivityItem } from './activityTypes';
+import {
+  isRequestAdminUiPrototypeActive,
+  RequestAdminUiPrototype,
+} from './RequestAdminUiPrototype';
 import { RequestBookGroups } from './RequestBookGroups';
 
 interface ActivitySidebarProps {
@@ -868,6 +872,10 @@ export const ActivitySidebar = ({
         {(() => {
           if (visibleItems.length === 0) {
             return <p className="mt-8 text-center text-sm opacity-70">{emptyStateMessage}</p>;
+          }
+
+          if (effectiveActiveTab === 'requests' && isAdmin && isRequestAdminUiPrototypeActive()) {
+            return <RequestAdminUiPrototype items={visibleItems} />;
           }
 
           if (effectiveActiveTab === 'history') {
