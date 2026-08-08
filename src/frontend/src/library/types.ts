@@ -67,6 +67,7 @@ export interface LibraryBookSummary {
   cover_url: string | null;
   formats_on_disk: Array<{ format: string | null; size: string | null }>;
   added_at: string | null;
+  is_unassigned: boolean;
 }
 
 export interface LibraryBooksResponse {

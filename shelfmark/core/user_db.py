@@ -326,6 +326,7 @@ class UserDB:
             try:
                 self._reset_legacy_requests(conn)
                 conn.executescript(_CREATE_TABLES_SQL)
+                self._migrate_request_foreign_keys(conn)
                 self._migrate_auth_source_column(conn)
                 self._migrate_identity_email_and_notifications(conn)
                 self._migrate_library_capability_column(conn)
@@ -436,6 +437,69 @@ class UserDB:
         if {str(column["name"]) for column in columns} == expected:
             return
         conn.execute("DROP TABLE download_requests")
+
+    def _migrate_request_foreign_keys(self, conn: sqlite3.Connection) -> None:
+        """Restore request ownership cascades missing from older canonical schemas."""
+        foreign_keys = {
+            (str(row["table"]), str(row["from"])): str(row["on_delete"])
+            for row in conn.execute("PRAGMA foreign_key_list(download_requests)")
+        }
+        required = {("users", "user_id"): "CASCADE", ("books", "book_id"): "CASCADE"}
+        if all(foreign_keys.get(column) == action for column, action in required.items()):
+            return
+
+        conn.execute(
+            """
+            CREATE TABLE download_requests_replacement (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                book_id        INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+                status         TEXT NOT NULL DEFAULT 'pending',
+                note           TEXT,
+                admin_note     TEXT,
+                reviewed_by    INTEGER REFERENCES users(id),
+                created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                reviewed_at    TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO download_requests_replacement (
+                id, user_id, book_id, status, note, admin_note, reviewed_by, created_at, reviewed_at
+            )
+            SELECT requests.id, requests.user_id, requests.book_id, requests.status,
+                   requests.note, requests.admin_note,
+                   CASE WHEN reviewer.id IS NULL THEN NULL ELSE requests.reviewed_by END,
+                   requests.created_at, requests.reviewed_at
+            FROM download_requests AS requests
+            JOIN users AS requester ON requester.id = requests.user_id
+            JOIN books ON books.id = requests.book_id
+            LEFT JOIN users AS reviewer ON reviewer.id = requests.reviewed_by
+            """
+        )
+        conn.execute(
+            """
+            DELETE FROM activity_view_state
+            WHERE item_type = 'request'
+              AND item_key IN (
+                  SELECT 'request:' || id
+                  FROM download_requests
+                  WHERE user_id NOT IN (SELECT id FROM users)
+                     OR book_id NOT IN (SELECT id FROM books)
+              )
+            """
+        )
+        conn.execute("DROP TABLE download_requests")
+        conn.execute("ALTER TABLE download_requests_replacement RENAME TO download_requests")
+        conn.execute(
+            "CREATE INDEX idx_download_requests_user_status_created_at "
+            "ON download_requests (user_id, status, created_at DESC)"
+        )
+        conn.execute(
+            "CREATE INDEX idx_download_requests_status_created_at "
+            "ON download_requests (status, created_at DESC)"
+        )
 
     def _migrate_download_history_queued_at(self, conn: sqlite3.Connection) -> None:
         """Ensure download_history.queued_at exists for queue-time recording."""

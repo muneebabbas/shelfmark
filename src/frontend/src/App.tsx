@@ -268,6 +268,7 @@ function App() {
         showToast('Request rejected', 'success');
       } catch (error) {
         showToast(getErrorMessage(error, 'Failed to reject request'), 'error');
+        throw error;
       }
     },
     [refreshActivitySnapshot, rejectRequest, showToast],
@@ -433,6 +434,7 @@ function App() {
                   onFindReleases={setReleaseBook}
                   onOpenSettings={handlePersonalSettingsClick}
                   onShowToast={showToast}
+                  onLibraryChanged={refreshActivitySnapshot}
                   kindleSender={config?.kindle_sender ?? ''}
                 />
               }

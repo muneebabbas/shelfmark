@@ -122,6 +122,37 @@ describe('Library page scope', () => {
     expect(screen.getByRole('heading', { name: 'Your library is empty' })).not.toBeNull();
   });
 
+  it('labels unassigned books in the all-users view', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(
+        () =>
+          new Response(
+            JSON.stringify({
+              books: [
+                {
+                  book_id: 1,
+                  title: 'Unassigned book',
+                  author: 'Author',
+                  cover_url: null,
+                  formats_on_disk: [],
+                  added_at: null,
+                  is_unassigned: true,
+                },
+              ],
+              total: 1,
+              limit: 25,
+              offset: 0,
+            }),
+          ),
+      ),
+    );
+
+    renderPage(true, '/library?scope=all');
+
+    expect(await screen.findByText('Unassigned')).not.toBeNull();
+  });
+
   it('hides the all-users control for non-administrators', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ books: [] }))));
 

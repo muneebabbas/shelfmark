@@ -91,6 +91,63 @@ def test_initialize_replaces_legacy_requests_without_affecting_other_tables(db_p
     conn.close()
 
 
+def test_initialize_repairs_request_foreign_keys_and_preserves_valid_rows(db_path):
+    user_db = UserDB(db_path)
+    user_db.initialize()
+    user = user_db.create_user(username="reader")
+    book_id = add_book(user_db, user)
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("DROP TABLE download_requests")
+        conn.execute(
+            """
+            CREATE TABLE download_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                book_id INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                note TEXT,
+                admin_note TEXT,
+                reviewed_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                reviewed_at TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO download_requests (user_id, book_id) VALUES (?, ?)", (user["id"], book_id)
+        )
+        conn.execute("INSERT INTO download_requests (user_id, book_id) VALUES (?, ?)", (999, 999))
+        conn.execute(
+            "INSERT INTO activity_view_state (viewer_scope, item_type, item_key) VALUES (?, ?, ?)",
+            ("admins", "request", "request:2"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    user_db.initialize()
+
+    conn = user_db._connect()
+    try:
+        foreign_keys = {
+            (row["table"], row["from"]): row["on_delete"]
+            for row in conn.execute("PRAGMA foreign_key_list(download_requests)")
+        }
+        request_id = conn.execute("SELECT id FROM download_requests").fetchone()[0]
+        stale_view_count = conn.execute(
+            "SELECT COUNT(*) FROM activity_view_state WHERE item_key = 'request:2'"
+        ).fetchone()[0]
+        conn.execute("DELETE FROM books WHERE id = ?", (book_id,))
+        conn.commit()
+    finally:
+        conn.close()
+    assert foreign_keys[("users", "user_id")] == "CASCADE"
+    assert foreign_keys[("books", "book_id")] == "CASCADE"
+    assert stale_view_count == 0
+    assert user_db.get_request(request_id) is None
+
+
 def test_initialize_migrates_legacy_email_notification_to_canonical_user_email(db_path):
     conn = sqlite3.connect(db_path)
     conn.executescript("""
