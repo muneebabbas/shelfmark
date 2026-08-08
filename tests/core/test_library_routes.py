@@ -503,7 +503,16 @@ def test_list_books_admin_can_request_all_libraries(app, user_db):
 
     assert {book["book_id"] for book in response.json["books"]} == {alice_book_id, admin_book_id}
     assert all(
-        set(book) == {"book_id", "title", "author", "cover_url", "formats_on_disk", "added_at"}
+        set(book)
+        == {
+            "book_id",
+            "title",
+            "author",
+            "cover_url",
+            "formats_on_disk",
+            "added_at",
+            "is_unassigned",
+        }
         for book in response.json["books"]
     )
 
@@ -885,6 +894,50 @@ def test_admin_purge_preview_is_protected_and_uses_display_name(app, user_db):
 
     assert response.status_code == 200
     assert response.json == {"users": [{"display_name": "Alice Reader", "username": "alice"}]}
+
+
+def test_admin_lists_and_purges_unassigned_book(app, user_db, library_service, tmp_path):
+    owner = user_db.create_user(username="owner")
+    admin = user_db.create_user(username="admin", role="admin")
+    book_id = client_post_book(app, owner, "hardcover", "unassigned-book")
+    path = tmp_path / "unassigned.epub"
+    path.write_bytes(b"book")
+    history_id = _seed_history_row(
+        user_db,
+        task_id="unassigned-release",
+        user_id=owner["id"],
+        username="owner",
+        book_id=book_id,
+        fmt="epub",
+        download_path=str(path),
+    )
+    library_service.link_download_to_user(
+        user_id=owner["id"], book_id=book_id, history_id=history_id
+    )
+    user_db.delete_user(owner["id"])
+    admin_client = _authed_client(app, admin, is_admin=True)
+
+    listing = admin_client.get("/api/library/books?scope=all")
+
+    assert listing.status_code == 200
+    assert listing.json["books"] == [
+        {
+            "book_id": book_id,
+            "title": "Book unassigned-book",
+            "author": "Author A",
+            "cover_url": None,
+            "formats_on_disk": [{"format": "epub", "size": None}],
+            "added_at": None,
+            "is_unassigned": True,
+        }
+    ]
+
+    response = admin_client.delete(f"/api/library/books/{book_id}/purge")
+
+    assert response.status_code == 200
+    assert not path.exists()
+    assert library_service.get_book(book_id) is None
+    assert library_service.get_download_history_row(history_id)["book_id"] is None
 
 
 def test_admin_purge_cancels_active_work_deletes_artifact_and_detaches_activity(

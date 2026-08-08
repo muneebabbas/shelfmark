@@ -221,6 +221,21 @@ def test_list_library_books_admin_returns_shared_book_once_with_latest_membershi
     assert total == 2
 
 
+def test_list_library_books_admin_includes_unassigned_books(library_service, user_db):
+    owner = user_db.create_user(username="owner")
+    book = _insert_book(library_service, provider_book_id="unassigned", title="Unassigned")
+    library_service.add_to_library(user_id=owner["id"], book_id=book["id"])
+
+    user_db.delete_user(owner["id"])
+
+    books, total = library_service.list_library_books(user_id=None, is_admin=True)
+
+    assert [row["id"] for row in books] == [book["id"]]
+    assert books[0]["is_unassigned"]
+    assert books[0]["library_added_at"] is None
+    assert total == 1
+
+
 def test_list_library_books_fuzzy_query_matches_title_or_author(library_service, user_db):
     alice = user_db.create_user(username="alice")
     book_a = _insert_book(

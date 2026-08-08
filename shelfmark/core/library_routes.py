@@ -199,6 +199,7 @@ def _serialize_book_summary(book: dict[str, Any], *, library_added_at: Any) -> d
         "cover_url": book.get("cover_url"),
         "formats_on_disk": [],  # filled by caller with union of file list
         "added_at": library_added_at,
+        "is_unassigned": bool(book.get("is_unassigned", False)),
     }
 
 

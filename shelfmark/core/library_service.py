@@ -462,13 +462,15 @@ class LibraryService:
         # Query is assembled from static fragments + parameterized clauses; the
         # LIKE patterns flow through bound parameters, so string interpolation
         # here only joins fixed SQL text.
+        membership_join = "LEFT JOIN" if is_admin else "INNER JOIN"
         filtered_sql = (
             "WITH library_membership AS (" + membership_sql + "), filtered_books AS ("  # noqa: S608
             "SELECT b.*, library_membership.added_at AS library_added_at, "
+            "library_membership.book_id IS NULL AS is_unassigned, "
             "EXISTS (SELECT 1 FROM download_history dh "
             "WHERE dh.book_id = b.id AND dh.final_status = ? "
             "AND dh.download_path IS NOT NULL) AS has_files "
-            "FROM books b INNER JOIN library_membership "
+            "FROM books b " + membership_join + " library_membership "
             "ON library_membership.book_id = b.id" + where_sql + ") "
         )
         conn = self._connect()

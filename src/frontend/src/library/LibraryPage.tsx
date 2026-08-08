@@ -295,6 +295,11 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
                     Needs review
                   </span>
                 )}
+                {book.is_unassigned && (
+                  <span className="mt-2 inline-block rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                    Unassigned
+                  </span>
+                )}
                 {book.formats_on_disk.length > 0 && (
                   <div className="mt-2">
                     <FormatBadges formats={book.formats_on_disk} />
