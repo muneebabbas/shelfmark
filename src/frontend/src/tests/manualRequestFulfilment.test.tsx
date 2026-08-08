@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ActivityCard } from '../components/activity/ActivityCard';
+import { ActivitySidebar } from '../components/activity/ActivitySidebar';
 import type { ActivityItem } from '../components/activity/activityTypes';
 import { RequestBookGroups } from '../components/activity/RequestBookGroups';
 import type { RequestRecord } from '../types';
@@ -60,6 +61,36 @@ describe('manual request fulfilment controls', () => {
     await user.click(screen.getByRole('button', { name: 'Reject request' }));
 
     expect(onReject).toHaveBeenCalledWith(requestRecord.id);
+  });
+
+  it('opens the rejection confirmation when an administrator rejects a single request', async () => {
+    const user = userEvent.setup();
+    const onRequestReject = vi.fn();
+    render(
+      <ActivitySidebar
+        isOpen
+        onClose={vi.fn()}
+        status={{}}
+        isAdmin
+        libraryCapability="download-capable"
+        onClearCompleted={vi.fn()}
+        onCancel={vi.fn()}
+        requestItems={[requestItem]}
+        pendingRequestCount={1}
+        showRequestsTab
+        onRequestReject={onRequestReject}
+      />,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Reject request' }));
+
+    expect(await screen.findByText('Reject request for')).not.toBeNull();
+    const confirmButton = screen
+      .getAllByRole('button', { name: 'Reject' })
+      .find((button) => button.textContent === 'Reject');
+    if (!confirmButton) throw new Error('Reject confirmation button not found');
+    await user.click(confirmButton);
+    expect(onRequestReject).toHaveBeenCalledWith(requestRecord.id, undefined);
   });
 
   it('does not render manual approval without an attached release', () => {

@@ -894,7 +894,18 @@ export const ActivitySidebar = ({
 
           const renderedGroups =
             effectiveActiveTab === 'requests' && isAdmin
-              ? groupedVisibleItems.filter((group) => group.key !== 'needs_review')
+              ? groupedVisibleItems.flatMap((group) => {
+                  if (group.key !== 'needs_review') return [group];
+                  if (effectiveRejectingRequest === null) return [];
+                  return [
+                    {
+                      ...group,
+                      items: group.items.filter(
+                        (item) => item.requestId === effectiveRejectingRequest.requestId,
+                      ),
+                    },
+                  ];
+                })
               : groupedVisibleItems;
 
           return (
