@@ -9,6 +9,7 @@ from shelfmark.core.config import config as app_config
 from shelfmark.core.notifications import NotificationEvent, send_test_notification
 from shelfmark.core.settings_registry import (
     ActionButton,
+    CheckboxField,
     HeadingField,
     SettingsField,
     TableField,
@@ -111,6 +112,16 @@ def notifications_settings() -> list[SettingsField]:
             key="notifications_heading",
             title="Administrator Notifications",
             description="Instance-level operational delivery targets. Personal notifications are configured by each user.",
+        ),
+        CheckboxField(
+            key="DEFAULT_PERSONAL_NOTIFICATIONS",
+            label="Enable Personal Notifications by Default",
+            description=(
+                "For new users with a valid email address, enable personal notifications "
+                "using Email transport and their account email."
+            ),
+            default=True,
+            env_supported=True,
         ),
         TextField(
             key="NOTIFICATION_BASE_URL",

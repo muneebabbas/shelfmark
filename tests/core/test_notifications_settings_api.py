@@ -49,6 +49,7 @@ def test_notification_targets_are_admin_only_and_round_trip(main_module):
     assert forbidden.status_code == 403
     assert saved.status_code == 200
     fields = {field["key"]: field for field in settings.json["fields"] if "key" in field}
+    assert fields["DEFAULT_PERSONAL_NOTIFICATIONS"]["value"] is True
     assert fields["ADMIN_NOTIFICATION_TARGETS"]["value"] == [
         {"transport": "email", "destination": "ops@example.com", "events": ["request_created"]}
     ]

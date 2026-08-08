@@ -22,7 +22,18 @@ logger = setup_logger(__name__)
 
 def _is_valid_email(value: str) -> bool:
     parsed = parseaddr(value)[1]
-    return bool(parsed) and "@" in parsed
+    if not parsed or "@" not in parsed:
+        return False
+    local_part, domain = parsed.rsplit("@", 1)
+    return bool(local_part and domain)
+
+
+def _personal_notifications_enabled_by_default() -> bool:
+    """Return whether new users with an email get personal notifications enabled."""
+    from shelfmark.core.config import config as app_config
+    from shelfmark.core.request_helpers import coerce_bool
+
+    return coerce_bool(app_config.get("DEFAULT_PERSONAL_NOTIFICATIONS", True), default=True)
 
 
 _CREATE_TABLES_SQL = """
@@ -630,11 +641,23 @@ class UserDB:
                         library_capability,
                     ),
                 )
-                conn.commit()
                 user_id = cursor.lastrowid
                 if not isinstance(user_id, int):
                     msg = "Failed to create user"
                     raise TypeError(msg)
+                if (
+                    email
+                    and _is_valid_email(email)
+                    and _personal_notifications_enabled_by_default()
+                ):
+                    conn.execute(
+                        """INSERT INTO user_preferences (
+                            user_id, notifications_enabled, notification_transport,
+                            notification_destination
+                        ) VALUES (?, 1, 'email', ?)""",
+                        (user_id, email.strip()),
+                    )
+                conn.commit()
                 created_user = self._get_user_by_id(conn, user_id)
                 return _require_loaded_user(created_user)
             except sqlite3.IntegrityError as e:
