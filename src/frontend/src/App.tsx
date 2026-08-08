@@ -268,6 +268,7 @@ function App() {
         showToast('Request rejected', 'success');
       } catch (error) {
         showToast(getErrorMessage(error, 'Failed to reject request'), 'error');
+        throw error;
       }
     },
     [refreshActivitySnapshot, rejectRequest, showToast],

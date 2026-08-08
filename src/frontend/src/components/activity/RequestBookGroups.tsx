@@ -35,7 +35,7 @@ export const groupPendingRequestsByBook = (items: ActivityItem[]): RequestBookGr
 interface RequestBookGroupsProps {
   items: ActivityItem[];
   onFindRelease: (requestId: number, record: RequestRecord) => Promise<void> | void;
-  onReject: (requestId: number) => Promise<void> | void;
+  onReject: (requestId: number, note?: string) => Promise<void> | void;
 }
 
 const CoverFallback = () => (
@@ -51,18 +51,37 @@ const RequestBookGroupCard = ({
 }: {
   group: RequestBookGroup;
 } & Omit<RequestBookGroupsProps, 'items'>) => {
-  const [expanded, setExpanded] = useState(false);
-  const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null);
+  const [rejectingRequestId, setRejectingRequestId] = useState<number | null>(null);
+  const [note, setNote] = useState('');
+  const [isRejecting, setIsRejecting] = useState(false);
   const leader = group.requests[0]?.requestRecord;
-  const selected = group.requests.find(
-    (item) => item.requestId === selectedRequestId,
+  const rejectingRequest = group.requests.find(
+    (item) => item.requestId === rejectingRequestId,
   )?.requestRecord;
 
   if (!leader) return null;
 
+  const closeReject = () => {
+    setRejectingRequestId(null);
+    setNote('');
+  };
+
+  const confirmReject = async () => {
+    if (!rejectingRequest) return;
+    setIsRejecting(true);
+    try {
+      await onReject(rejectingRequest.id, note.trim() || undefined);
+      closeReject();
+    } catch {
+      // The caller reports the failure; leave the form intact for a retry.
+    } finally {
+      setIsRejecting(false);
+    }
+  };
+
   return (
     <article className="rounded-lg border border-(--border-muted) p-3">
-      <div className="flex items-start gap-3">
+      <div className="-m-3 mb-0 flex items-start gap-3 bg-(--bg-soft) p-3">
         <div className="h-18 w-12 shrink-0 overflow-hidden rounded-sm bg-gray-200 dark:bg-gray-700">
           {group.book.coverUrl ? (
             <img
@@ -81,65 +100,87 @@ const RequestBookGroupCard = ({
               <span className="text-xs opacity-60"> - {group.book.author}</span>
             )}
           </p>
-          <button
-            type="button"
-            onClick={() => setExpanded((value) => !value)}
-            className="mt-1 text-xs text-sky-600 hover:underline dark:text-sky-400"
-            aria-expanded={expanded}
-          >
-            {group.requests.length} requester{group.requests.length === 1 ? '' : 's'}
-            {expanded ? ' (hide)' : ' (show)'}
-          </button>
+          <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">
+            {group.requests.length} request{group.requests.length === 1 ? '' : 's'} waiting
+          </p>
         </div>
-      </div>
-
-      {expanded && (
-        <div className="mt-3 space-y-1 border-t border-(--border-muted) pt-2">
-          {group.requests.map((item) => {
-            const record = item.requestRecord;
-            if (!record || typeof item.requestId !== 'number') return null;
-            const isSelected = selectedRequestId === item.requestId;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setSelectedRequestId(record.id)}
-                className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs ${isSelected ? 'bg-sky-500/10 text-sky-700 dark:text-sky-300' : 'hover:bg-(--hover-surface)'}`}
-              >
-                <span>{record.username?.trim() || `User ${record.user_id}`}</span>
-                {isSelected && <span>Selected</span>}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      <div className="mt-3 flex flex-wrap gap-2">
         <button
           type="button"
           onClick={() => void onFindRelease(leader.id, leader)}
           className="rounded-md bg-sky-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-sky-700"
         >
-          Find release
+          Find a release
         </button>
-        {group.requests.length === 1 && (
-          <button
-            type="button"
-            onClick={() => void onReject(leader.id)}
-            className="rounded-md border border-red-300 px-2.5 py-1.5 text-xs text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/30"
-          >
-            Reject request
-          </button>
-        )}
-        {selected && (
-          <button
-            type="button"
-            onClick={() => void onReject(selected.id)}
-            className="rounded-md border border-red-300 px-2.5 py-1.5 text-xs text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/30"
-          >
-            Reject selected
-          </button>
-        )}
+      </div>
+
+      <div className="mt-3 divide-y divide-(--border-muted)">
+        {group.requests.map((item) => {
+          const record = item.requestRecord;
+          if (!record) return null;
+          const isOpen = rejectingRequestId === record.id;
+          return (
+            <div key={item.id} className="py-2.5 first:pt-0 last:pb-0">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm">{record.username?.trim() || `User ${record.user_id}`}</p>
+                  {record.note && (
+                    <p className="mt-0.5 text-xs italic opacity-60">&ldquo;{record.note}&rdquo;</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRejectingRequestId(record.id);
+                    setNote('');
+                  }}
+                  disabled={isRejecting}
+                  className="shrink-0 text-xs text-rose-700 hover:underline dark:text-rose-300"
+                  aria-label={`Decline request from ${record.username?.trim() || `User ${record.user_id}`}`}
+                >
+                  Decline
+                </button>
+              </div>
+              {isOpen && (
+                <div className="mt-3 border-t border-(--border-muted) pt-3">
+                  <p className="text-sm font-medium">Decline this requester?</p>
+                  <p className="mt-1 text-xs opacity-65">
+                    The optional note is shown to {record.username?.trim() || 'the requester'}.
+                  </p>
+                  <textarea
+                    value={note}
+                    onChange={(event) => setNote(event.target.value.slice(0, 1000))}
+                    className="mt-3 w-full rounded-md border border-(--border-muted) bg-transparent p-2 text-xs"
+                    placeholder="Optional note for the requester"
+                    aria-label={`Optional note for ${record.username?.trim() || `User ${record.user_id}`}`}
+                    rows={3}
+                    disabled={isRejecting}
+                  />
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <span className="text-[11px] opacity-50">{note.length}/1000</span>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={closeReject}
+                        disabled={isRejecting}
+                        className="rounded-md px-2.5 py-1.5 text-xs disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void confirmReject()}
+                        disabled={isRejecting}
+                        className="rounded-md bg-rose-700 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-rose-800 disabled:opacity-60"
+                      >
+                        {isRejecting ? 'Declining...' : 'Decline request'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </article>
   );

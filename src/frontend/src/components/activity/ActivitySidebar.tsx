@@ -893,33 +893,27 @@ export const ActivitySidebar = ({
           }
 
           const renderedGroups =
-            effectiveActiveTab === 'requests' && isAdmin
-              ? groupedVisibleItems.flatMap((group) => {
-                  if (group.key !== 'needs_review') return [group];
-                  if (effectiveRejectingRequest === null) return [];
-                  return [
-                    {
-                      ...group,
-                      items: group.items.filter(
-                        (item) => item.requestId === effectiveRejectingRequest.requestId,
-                      ),
-                    },
-                  ];
-                })
+            isAdmin && (effectiveActiveTab === 'requests' || effectiveActiveTab === 'all')
+              ? groupedVisibleItems
+                  .map((group) => ({
+                    ...group,
+                    items: group.items.filter((item) => item.requestRecord?.status !== 'pending'),
+                  }))
+                  .filter((group) => group.items.length > 0)
               : groupedVisibleItems;
+          const queueItems = visibleItems.filter(
+            (item) => item.requestRecord?.status === 'pending',
+          );
 
           return (
             <>
-              {effectiveActiveTab === 'requests' && isAdmin && (
+              {isAdmin && (effectiveActiveTab === 'requests' || effectiveActiveTab === 'all') && (
                 <RequestBookGroups
-                  items={visibleItems}
+                  items={queueItems}
                   onFindRelease={(requestId, record) =>
                     onRequestApprove?.(requestId, record, { browseOnly: true })
                   }
-                  onReject={(requestId) => {
-                    setReviewingRequestId(null);
-                    setRejectingRequest({ requestId });
-                  }}
+                  onReject={(requestId, note) => onRequestReject?.(requestId, note)}
                 />
               )}
               {renderedGroups.map((group) => (
@@ -1017,8 +1011,12 @@ export const ActivitySidebar = ({
                               onRequestRejectConfirm={
                                 onRequestReject
                                   ? async (rejectedRequestId, adminNote) => {
-                                      await onRequestReject(rejectedRequestId, adminNote);
-                                      setRejectingRequest(null);
+                                      try {
+                                        await onRequestReject(rejectedRequestId, adminNote);
+                                        setRejectingRequest(null);
+                                      } catch {
+                                        // The request handler presents the error and leaves the panel open.
+                                      }
                                     }
                                   : undefined
                               }

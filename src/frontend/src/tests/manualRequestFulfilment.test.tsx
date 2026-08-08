@@ -49,18 +49,72 @@ describe('manual request fulfilment controls', () => {
   it('does not render Mark available in a Book request group', () => {
     render(<RequestBookGroups items={[requestItem]} onFindRelease={vi.fn()} onReject={vi.fn()} />);
 
-    expect(screen.getByRole('button', { name: 'Find release' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Find a release' })).not.toBeNull();
     expect(screen.queryByRole('button', { name: 'Mark available' })).toBeNull();
   });
 
-  it('lets an administrator reject a single request without selecting it first', async () => {
+  it('opens the release picker from the book-level action', async () => {
+    const onFindRelease = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <RequestBookGroups items={[requestItem]} onFindRelease={onFindRelease} onReject={vi.fn()} />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Find a release' }));
+
+    expect(onFindRelease).toHaveBeenCalledWith(requestRecord.id, requestRecord);
+  });
+
+  it('shows the requester that an optional decline note is visible to them', async () => {
     const onReject = vi.fn();
     const user = userEvent.setup();
     render(<RequestBookGroups items={[requestItem]} onFindRelease={vi.fn()} onReject={onReject} />);
 
-    await user.click(screen.getByRole('button', { name: 'Reject request' }));
+    await user.click(screen.getByRole('button', { name: 'Decline request from Reader' }));
+    expect(screen.getByText('The optional note is shown to Reader.')).not.toBeNull();
+    await user.type(
+      screen.getByPlaceholderText('Optional note for the requester'),
+      'Not available',
+    );
+    await user.click(screen.getByRole('button', { name: 'Decline request' }));
 
-    expect(onReject).toHaveBeenCalledWith(requestRecord.id);
+    expect(onReject).toHaveBeenCalledWith(requestRecord.id, 'Not available');
+  });
+
+  it('does not carry a decline note to another requester', async () => {
+    const user = userEvent.setup();
+    const anotherRequest: ActivityItem = {
+      ...requestItem,
+      id: 'request-2',
+      requestId: 2,
+      requestRecord: { ...requestRecord, id: 2, user_id: 2, username: 'Another Reader' },
+    };
+    render(
+      <RequestBookGroups
+        items={[requestItem, anotherRequest]}
+        onFindRelease={vi.fn()}
+        onReject={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Decline request from Reader' }));
+    await user.type(screen.getByPlaceholderText('Optional note for the requester'), 'First note');
+    await user.click(screen.getByRole('button', { name: 'Decline request from Another Reader' }));
+
+    const noteField = screen.getByPlaceholderText('Optional note for the requester');
+    if (!(noteField instanceof HTMLTextAreaElement)) throw new Error('Expected a note textarea');
+    expect(noteField.value).toBe('');
+  });
+
+  it('keeps the decline form open when the rejection fails', async () => {
+    const onReject = vi.fn().mockRejectedValue(new Error('Request failed'));
+    const user = userEvent.setup();
+    render(<RequestBookGroups items={[requestItem]} onFindRelease={vi.fn()} onReject={onReject} />);
+
+    await user.click(screen.getByRole('button', { name: 'Decline request from Reader' }));
+    await user.click(screen.getByRole('button', { name: 'Decline request' }));
+
+    expect(screen.getByText('Decline this requester?')).not.toBeNull();
   });
 
   it('opens the rejection confirmation when an administrator rejects a single request', async () => {
@@ -82,14 +136,10 @@ describe('manual request fulfilment controls', () => {
       />,
     );
 
-    await user.click(await screen.findByRole('button', { name: 'Reject request' }));
+    await user.click(await screen.findByRole('button', { name: 'Decline request from Reader' }));
 
-    expect(await screen.findByText('Reject request for')).not.toBeNull();
-    const confirmButton = screen
-      .getAllByRole('button', { name: 'Reject' })
-      .find((button) => button.textContent === 'Reject');
-    if (!confirmButton) throw new Error('Reject confirmation button not found');
-    await user.click(confirmButton);
+    expect(await screen.findByText('The optional note is shown to Reader.')).not.toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Decline request' }));
     expect(onRequestReject).toHaveBeenCalledWith(requestRecord.id, undefined);
   });
 
