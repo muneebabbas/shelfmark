@@ -122,6 +122,15 @@ const RequestBookGroupCard = ({
         >
           Find release
         </button>
+        {group.requests.length === 1 && (
+          <button
+            type="button"
+            onClick={() => void onReject(leader.id)}
+            className="rounded-md border border-red-300 px-2.5 py-1.5 text-xs text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/30"
+          >
+            Reject request
+          </button>
+        )}
         {selected && (
           <button
             type="button"

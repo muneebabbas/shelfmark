@@ -433,6 +433,7 @@ function App() {
                   onFindReleases={setReleaseBook}
                   onOpenSettings={handlePersonalSettingsClick}
                   onShowToast={showToast}
+                  onLibraryChanged={refreshActivitySnapshot}
                   kindleSender={config?.kindle_sender ?? ''}
                 />
               }

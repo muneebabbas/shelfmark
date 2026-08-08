@@ -905,7 +905,10 @@ export const ActivitySidebar = ({
                   onFindRelease={(requestId, record) =>
                     onRequestApprove?.(requestId, record, { browseOnly: true })
                   }
-                  onReject={(requestId) => onRequestReject?.(requestId)}
+                  onReject={(requestId) => {
+                    setReviewingRequestId(null);
+                    setRejectingRequest({ requestId });
+                  }}
                 />
               )}
               {renderedGroups.map((group) => (

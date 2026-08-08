@@ -42,6 +42,7 @@ interface BookDetailPageProps {
   onFindReleases: (book: Book) => void;
   onOpenSettings: () => void;
   onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
+  onLibraryChanged?: () => Promise<void> | void;
   kindleSender: string;
 }
 
@@ -850,6 +851,7 @@ export const BookDetailPage = ({
   onFindReleases,
   onOpenSettings,
   onShowToast,
+  onLibraryChanged,
   kindleSender,
 }: BookDetailPageProps) => {
   const { bookId: rawBookId } = useParams();
@@ -1175,6 +1177,7 @@ export const BookDetailPage = ({
               await removeLibraryBook(book.book_id);
               onShowToast('Book removed from your library', 'success');
             }
+            await onLibraryChanged?.();
             await navigate(libraryUrl);
           }}
         />

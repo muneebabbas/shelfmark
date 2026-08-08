@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ActivityCard } from '../components/activity/ActivityCard';
@@ -49,6 +50,16 @@ describe('manual request fulfilment controls', () => {
 
     expect(screen.getByRole('button', { name: 'Find release' })).not.toBeNull();
     expect(screen.queryByRole('button', { name: 'Mark available' })).toBeNull();
+  });
+
+  it('lets an administrator reject a single request without selecting it first', async () => {
+    const onReject = vi.fn();
+    const user = userEvent.setup();
+    render(<RequestBookGroups items={[requestItem]} onFindRelease={vi.fn()} onReject={onReject} />);
+
+    await user.click(screen.getByRole('button', { name: 'Reject request' }));
+
+    expect(onReject).toHaveBeenCalledWith(requestRecord.id);
   });
 
   it('does not render manual approval without an attached release', () => {

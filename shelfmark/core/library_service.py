@@ -385,6 +385,11 @@ class LibraryService:
     def _detach_book_activity(conn: sqlite3.Connection, book_id: int, *, clear_paths: bool) -> None:
         """Remove all visibility links before deleting a Book-owned activity association."""
         conn.execute(
+            "DELETE FROM activity_view_state WHERE item_type = 'request' AND item_key IN "
+            "(SELECT 'request:' || id FROM download_requests WHERE book_id = ?)",
+            (book_id,),
+        )
+        conn.execute(
             "DELETE FROM user_downloads WHERE history_id IN "
             "(SELECT id FROM download_history WHERE book_id = ?)",
             (book_id,),

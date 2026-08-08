@@ -826,6 +826,16 @@ def test_final_member_removal_detaches_activity_and_removes_visibility(
 ):
     alice = user_db.create_user(username="alice")
     book_id = client_post_book(app, alice, "hardcover", "final-member")
+    request = user_db.create_library_request(user_id=alice["id"], book_id=book_id)
+    conn = user_db._connect()
+    try:
+        conn.execute(
+            "INSERT INTO activity_view_state (viewer_scope, item_type, item_key) VALUES (?, ?, ?)",
+            ("user:1", "request", f"request:{request['id']}"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
     history_id = _seed_history_row(
         user_db,
         task_id="final-member-release",
@@ -848,6 +858,18 @@ def test_final_member_removal_detaches_activity_and_removes_visibility(
     assert history["book_id"] is None
     assert history["download_path"] == "/tmp/retained.epub"
     assert not library_service.download_linked_to_user(user_id=alice["id"], history_id=history_id)
+    assert user_db.get_request(request["id"]) is None
+    conn = user_db._connect()
+    try:
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM activity_view_state WHERE item_key = ?",
+                (f"request:{request['id']}",),
+            ).fetchone()[0]
+            == 0
+        )
+    finally:
+        conn.close()
 
 
 def test_personal_removal_keeps_shared_book_files_and_other_member_visibility(
