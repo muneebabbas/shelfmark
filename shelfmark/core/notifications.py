@@ -113,6 +113,7 @@ class NotificationEvent(StrEnum):
     DOWNLOAD_COMPLETE = "download_complete"
     DOWNLOAD_FAILED = "download_failed"
     IMPORT_NEEDS_REVIEW = "import_needs_review"
+    CONVERSION_FAILED = "conversion_failed"
 
 
 @dataclass
@@ -313,6 +314,7 @@ _ADMIN_EVENTS = {
     NotificationEvent.DOWNLOAD_COMPLETE,
     NotificationEvent.DOWNLOAD_FAILED,
     NotificationEvent.IMPORT_NEEDS_REVIEW,
+    NotificationEvent.CONVERSION_FAILED,
 }
 
 
@@ -375,6 +377,7 @@ def _resolve_notify_type(event: NotificationEvent) -> object:
             NotificationEvent.DOWNLOAD_COMPLETE: "success",
             NotificationEvent.DOWNLOAD_FAILED: "failure",
             NotificationEvent.IMPORT_NEEDS_REVIEW: "warning",
+            NotificationEvent.CONVERSION_FAILED: "failure",
         }
         return fallback[event]
 
@@ -385,6 +388,7 @@ def _resolve_notify_type(event: NotificationEvent) -> object:
         NotificationEvent.DOWNLOAD_COMPLETE: apprise.NotifyType.SUCCESS,
         NotificationEvent.DOWNLOAD_FAILED: apprise.NotifyType.FAILURE,
         NotificationEvent.IMPORT_NEEDS_REVIEW: apprise.NotifyType.WARNING,
+        NotificationEvent.CONVERSION_FAILED: apprise.NotifyType.FAILURE,
     }
     return mapping[event]
 
@@ -424,6 +428,11 @@ def _render_message(context: NotificationContext) -> tuple[str, str]:
         return (
             "Book Needs Review",
             f'"{title}" by {author} could not be imported automatically and needs review.{link_line}',
+        )
+    if event == NotificationEvent.CONVERSION_FAILED:
+        return (
+            "AZW3 Conversion Failed",
+            f'Could not convert "{title}" by {author} to EPUB. Check the administrator activity log.',
         )
 
     error_message = _clean_text(context.error_message, "")
