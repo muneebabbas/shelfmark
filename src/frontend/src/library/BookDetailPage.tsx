@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { useSocket } from '../contexts/SocketContext';
@@ -247,6 +247,8 @@ const AvailableFiles = ({
   const [prototypeDownloadMenuHistoryId, setPrototypeDownloadMenuHistoryId] = useState<
     number | null
   >(null);
+  const prototypeOverflowRef = useRef<HTMLDivElement | null>(null);
+  const prototypeDownloadMenuRef = useRef<HTMLDivElement | null>(null);
   const releases = groupFilesByRelease(book.files);
   const latestFiles = latestFilesByFormat(book.files);
   const kindleFiles = latestFilesByFormat(book.files.filter((file) => file.downloadable_by_me));
@@ -264,11 +266,7 @@ const AvailableFiles = ({
     ? kindleFormat
     : (kindleFormats[0] ?? null);
   const selectedAzw3 = selectedKindleFormat === 'azw3';
-  const selectedAzw3Ready =
-    selectedAzw3 && (azw3PrototypeVariant === 'B' || azw3PrototypeVariant === 'D');
-  let kindleButtonLabel = `Send ${selectedKindleFormat?.toUpperCase() ?? 'file'} to Kindle`;
-  if (selectedAzw3Ready) kindleButtonLabel = 'Send converted EPUB to Kindle';
-  if (selectedAzw3 && !selectedAzw3Ready) kindleButtonLabel = 'Converting AZW3 to EPUB...';
+  let kindleButtonLabel = 'Send to Kindle';
   if (sendingKindle === 'latest') kindleButtonLabel = 'Sending to Kindle';
   const sendToKindle = async (
     selection: { format?: string; historyId?: number },
@@ -281,6 +279,37 @@ const AvailableFiles = ({
       setSendingKindle(null);
     }
   };
+  const canSendAdvancedFileToKindle = (file: LibraryFile): boolean =>
+    sendingKindle === null &&
+    (file.format?.toLowerCase() === 'epub' ||
+      (azw3PrototypeVariant === 'D' && file.format?.toLowerCase() === 'azw3'));
+  const advancedKindleTitle = (file: LibraryFile): string => {
+    if (file.format?.toLowerCase() === 'azw3' && azw3PrototypeVariant === 'D') {
+      return 'A converted EPUB will be sent to Kindle';
+    }
+    if (file.format?.toLowerCase() === 'epub') return `Email will come from ${kindleSender}`;
+    return 'Send to Kindle is available for EPUB files only';
+  };
+
+  useDependencyEffect(() => {
+    if (prototypeOverflowHistoryId === null && prototypeDownloadMenuHistoryId === null) {
+      return undefined;
+    }
+    const dismissMenus = (event: MouseEvent) => {
+      const target = event.target;
+      if (
+        target instanceof Node &&
+        (prototypeOverflowRef.current?.contains(target) ||
+          prototypeDownloadMenuRef.current?.contains(target))
+      ) {
+        return;
+      }
+      setPrototypeOverflowHistoryId(null);
+      setPrototypeDownloadMenuHistoryId(null);
+    };
+    window.addEventListener('mousedown', dismissMenus);
+    return () => window.removeEventListener('mousedown', dismissMenus);
+  }, [prototypeDownloadMenuHistoryId, prototypeOverflowHistoryId]);
 
   return (
     <section className="mt-10">
@@ -328,14 +357,8 @@ const AvailableFiles = ({
                       Download
                     </button>
                   )}
-                {(azw3PrototypeVariant === 'B' || azw3PrototypeVariant === 'D') &&
-                  file.format?.toLowerCase() === 'azw3' && (
-                    <span className="text-xs text-gray-600 dark:text-gray-300">
-                      Converted EPUB ready
-                    </span>
-                  )}
                 {azw3PrototypeVariant === 'D' && file.format?.toLowerCase() === 'azw3' && (
-                  <div className="relative flex">
+                  <div ref={prototypeDownloadMenuRef} className="relative flex">
                     <button
                       type="button"
                       className="hover-action cursor-pointer rounded-l-md border border-(--border-muted) px-2 py-1 text-sm font-medium text-(--text)"
@@ -348,11 +371,12 @@ const AvailableFiles = ({
                       className="hover-action cursor-pointer rounded-r-md border border-l-0 border-(--border-muted) px-2 py-1 text-sm font-medium text-(--text)"
                       aria-label="Download options"
                       aria-expanded={prototypeDownloadMenuHistoryId === file.history_id}
-                      onClick={() =>
+                      onClick={() => {
+                        setPrototypeOverflowHistoryId(null);
                         setPrototypeDownloadMenuHistoryId((current) =>
                           current === file.history_id ? null : file.history_id,
-                        )
-                      }
+                        );
+                      }}
                     >
                       <span aria-hidden="true">v</span>
                     </button>
@@ -396,17 +420,13 @@ const AvailableFiles = ({
             >
               {kindleFormats.map((format) => (
                 <option key={format} value={format} className="bg-(--bg) text-(--text)">
-                  {format === 'azw3' ? 'AZW3 (converted to EPUB)' : format.toUpperCase()}
+                  {format.toUpperCase()}
                 </option>
               ))}
             </select>
             <button
               type="button"
-              disabled={
-                !selectedKindleFormat ||
-                sendingKindle !== null ||
-                (selectedAzw3 && !selectedAzw3Ready)
-              }
+              disabled={!selectedKindleFormat || sendingKindle !== null}
               className={`mt-2 flex w-full items-center justify-center gap-2 rounded-md border border-(--border-muted) px-3 py-2 text-sm font-medium text-(--text) disabled:cursor-not-allowed disabled:opacity-50 ${selectedKindleFormat && sendingKindle === null ? 'hover-action cursor-pointer' : ''}`}
               onClick={() =>
                 selectedKindleFormat &&
@@ -418,10 +438,9 @@ const AvailableFiles = ({
               {sendingKindle === 'latest' && <SendingSpinner />}
               {kindleButtonLabel}
             </button>
-            {selectedAzw3 && !selectedAzw3Ready && (
-              <p className="mt-2 text-xs text-violet-700 dark:text-violet-300">
-                Shelfmark converts AZW3 to EPUB before sending. This prototype shows the converting
-                state only.
+            {selectedAzw3 && (
+              <p className="mt-2 text-xs text-gray-600 dark:text-gray-300">
+                * A converted EPUB will be used.
               </p>
             )}
             {kindleSender && (
@@ -513,33 +532,42 @@ const AvailableFiles = ({
                       </button>
                       <button
                         type="button"
-                        disabled={file.format?.toLowerCase() !== 'epub' || sendingKindle !== null}
-                        title={
-                          file.format?.toLowerCase() === 'epub'
-                            ? `Email will come from ${kindleSender}`
-                            : 'Send to Kindle is available for EPUB files only'
-                        }
+                        disabled={!canSendAdvancedFileToKindle(file)}
+                        title={advancedKindleTitle(file)}
                         aria-label="Send to Kindle"
-                        className={`rounded-md p-2 text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-300 ${file.format?.toLowerCase() === 'epub' && sendingKindle === null ? 'hover-action cursor-pointer' : ''}`}
+                        className={`rounded-md p-2 text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-300 ${canSendAdvancedFileToKindle(file) ? 'hover-action cursor-pointer' : ''}`}
                         onClick={() =>
-                          void sendToKindle({ historyId: file.history_id }, file.history_id)
+                          azw3PrototypeVariant === 'D' && file.format?.toLowerCase() === 'azw3'
+                            ? onShowToast(
+                                'AZW3 Kindle sending is not wired in this prototype',
+                                'info',
+                              )
+                            : void sendToKindle({ historyId: file.history_id }, file.history_id)
                         }
                       >
                         {sendingKindle === file.history_id ? <SendingSpinner /> : <SendIcon />}
                       </button>
                       {(azw3PrototypeVariant === 'A' || azw3PrototypeVariant === 'D') &&
                         file.format?.toLowerCase() === 'azw3' && (
-                          <div className="relative">
+                          <div
+                            ref={
+                              prototypeOverflowHistoryId === file.history_id
+                                ? prototypeOverflowRef
+                                : undefined
+                            }
+                            className="relative"
+                          >
                             <button
                               type="button"
                               className="hover-action rounded-md px-2 py-1 text-xs font-medium text-(--text)"
                               aria-label="More AZW3 actions"
                               aria-expanded={prototypeOverflowHistoryId === file.history_id}
-                              onClick={() =>
+                              onClick={() => {
+                                setPrototypeDownloadMenuHistoryId(null);
                                 setPrototypeOverflowHistoryId((current) =>
                                   current === file.history_id ? null : file.history_id,
-                                )
-                              }
+                                );
+                              }}
                             >
                               ...
                             </button>
