@@ -729,6 +729,46 @@ class LibraryService:
         finally:
             conn.close()
 
+    def get_derived_epub(self, *, book_id: int, history_id: int) -> dict[str, Any] | None:
+        """Return an AZW3 File's current derived EPUB state for its owning Book."""
+        normalized_book_id = self._book_identity(book_id)
+        normalized_history_id = self._history_identity(history_id)
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                """
+                SELECT da.status, da.artifact_path, da.validation_result
+                FROM derived_artifacts da
+                JOIN download_history dh ON dh.id = da.source_history_id
+                WHERE da.source_history_id = ?
+                  AND da.book_id = ?
+                  AND dh.book_id = ?
+                  AND dh.final_status = ?
+                  AND LOWER(dh.format) = 'azw3'
+                ORDER BY da.id DESC
+                LIMIT 1
+                """,
+                (
+                    normalized_history_id,
+                    normalized_book_id,
+                    normalized_book_id,
+                    _COMPLETE_DOWNLOAD_STATUS,
+                ),
+            ).fetchone()
+            return dict(row) if row is not None else None
+        finally:
+            conn.close()
+
+    def retry_derived_epub(self, *, book_id: int, history_id: int) -> bool:
+        """Requeue a failed AZW3 conversion when the pipeline is available."""
+        artifact = self.get_derived_epub(book_id=book_id, history_id=history_id)
+        if artifact is None or artifact["status"] not in {"failed", "interrupted"}:
+            return False
+        if self._derived_artifact_service is None:
+            return False
+        self._derived_artifact_service.schedule_history_ids([self._history_identity(history_id)])
+        return True
+
     def link_download_to_user(self, *, user_id: int, book_id: int, history_id: int) -> bool:
         """Idempotently link a ``download_history`` row to a user's library.
 
@@ -890,6 +930,10 @@ class LibraryService:
                 )
                 if row is None:
                     return None
+                if normalized_requested.lower() == "azw3":
+                    return self.resolve_kindle_history_id(
+                        book_id=book_id, history_id=int(row["id"])
+                    )
                 return self._format_history_row_for_kindle(row)
         for candidate_format in KINDLE_FORMAT_PRIORITY:
             row = self._fetch_book_history_row_for_format(
@@ -914,16 +958,36 @@ class LibraryService:
                   AND book_id = ?
                   AND final_status = ?
                   AND download_path IS NOT NULL
-                  AND LOWER(format) = ?
+                  AND LOWER(format) IN ('epub', 'azw3')
                 """,
                 (
                     normalized_history_id,
                     normalized_book_id,
                     _COMPLETE_DOWNLOAD_STATUS,
-                    KINDLE_FORMAT_PRIORITY[0],
                 ),
             ).fetchone()
-            return self._format_history_row_for_kindle(row)
+            if row is None:
+                return None
+            if str(row["format"]).lower() == "epub":
+                return self._format_history_row_for_kindle(row)
+            artifact = self.get_derived_epub(
+                book_id=normalized_book_id, history_id=normalized_history_id
+            )
+            if (
+                artifact is None
+                or artifact["status"] != "ready"
+                or artifact["validation_result"] != "valid"
+            ):
+                return {"conversion_status": artifact["status"] if artifact else "unavailable"}
+            artifact_path = normalize_optional_text(artifact.get("artifact_path"))
+            if artifact_path is None:
+                return {"conversion_status": "unavailable"}
+            return {
+                "history_id": normalized_history_id,
+                "format": "epub",
+                "download_path": artifact_path,
+                "size": row["size"],
+            }
         finally:
             conn.close()
 

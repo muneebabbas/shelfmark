@@ -10,6 +10,9 @@ export interface LibraryFile {
   download_path: string | null;
   torrent_path: string | null;
   downloadable_by_me: boolean;
+  derived_epub?: {
+    status: 'pending' | 'converting' | 'interrupted' | 'ready' | 'failed' | 'unavailable';
+  };
 }
 
 export interface SourceMemberReview {
