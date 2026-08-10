@@ -35,6 +35,14 @@ ENV BUILD_VERSION=${BUILD_VERSION}
 ARG RELEASE_VERSION
 ENV RELEASE_VERSION=${RELEASE_VERSION}
 
+# Keep the converter version and archive checksums explicit so image rebuilds do
+# not silently change conversion output. Update all three values together.
+ARG CALIBRE_VERSION=9.13.0
+ARG CALIBRE_X86_64_SHA256=d664fe74953463f1b679945a5460234b61cbf539da48fc78f2111ff8d9503cc0
+ARG CALIBRE_ARM64_SHA256=a700fd765309b5b0fe5725ad907159fe77832f4a78fee59e34eeb31b8002cb7a
+ENV CALIBRE_EBOOK_CONVERT=/usr/bin/ebook-convert \
+    CALIBRE_VERSION=${CALIBRE_VERSION}
+
 # Set shell to bash with pipefail option
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -67,6 +75,8 @@ RUN apt-get update && \
     dumb-init \
     # For debug
     zip iputils-ping \
+    # Extract the upstream Calibre binary bundle below.
+    xz-utils \
     # For user switching
     gosu \
     # --- Tor support (activated via USING_TOR=true) ---
@@ -92,6 +102,27 @@ RUN apt-get update && \
     locale-gen en_US.UTF-8 && \
     echo "LC_ALL=en_US.UTF-8" >> /etc/environment && \
     echo "LANG=en_US.UTF-8" > /etc/locale.conf
+
+# Calibre's official Linux bundle includes its private dependencies and supports
+# both architectures published by Shelfmark. The archive is downloaded only at
+# build time and verified before it is extracted.
+ARG TARGETARCH
+RUN case "${TARGETARCH}" in \
+        amd64) calibre_arch=x86_64; calibre_sha256=${CALIBRE_X86_64_SHA256} ;; \
+        arm64) calibre_arch=arm64; calibre_sha256=${CALIBRE_ARM64_SHA256} ;; \
+        *) echo "Unsupported Calibre architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac && \
+    archive="calibre-${CALIBRE_VERSION}-${calibre_arch}.txz" && \
+    curl --fail --location --retry 3 --silent --show-error \
+        "https://download.calibre-ebook.com/${CALIBRE_VERSION}/${archive}" \
+        --output "/tmp/${archive}" && \
+    echo "${calibre_sha256}  /tmp/${archive}" | sha256sum --check --strict && \
+    mkdir -p /opt/calibre && \
+    tar -xJf "/tmp/${archive}" -C /opt/calibre && \
+    ln -s /opt/calibre/ebook-convert /usr/bin/ebook-convert && \
+    calibre_version_output="$(ebook-convert --version 2>&1)" && \
+    [[ "${calibre_version_output}" == "ebook-convert (calibre ${CALIBRE_VERSION})"* ]] && \
+    rm "/tmp/${archive}"
 
 # Create a fixed runtime user/group so hardened Docker/Kubernetes deployments
 # can start the container directly as a non-root user with a passwd entry.
