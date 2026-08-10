@@ -72,6 +72,26 @@ const toReleaseBook = (book: BookDetailResponse): Book => ({
 const dateLabel = (date: string | null): string =>
   date ? new Date(date).toLocaleDateString() : 'date unknown';
 
+type Azw3PrototypeVariant = 'A' | 'B' | 'C';
+
+const azw3PrototypeVariantLabel = (variant: Azw3PrototypeVariant): string => {
+  if (variant === 'A') return 'Advanced action';
+  if (variant === 'B') return 'Inline status';
+  return 'Primary file action';
+};
+
+const previousAzw3PrototypeVariant = (variant: Azw3PrototypeVariant): Azw3PrototypeVariant => {
+  if (variant === 'A') return 'C';
+  if (variant === 'B') return 'A';
+  return 'B';
+};
+
+const nextAzw3PrototypeVariant = (variant: Azw3PrototypeVariant): Azw3PrototypeVariant => {
+  if (variant === 'C') return 'A';
+  if (variant === 'A') return 'B';
+  return 'C';
+};
+
 const DownloadIcon = () => (
   <svg
     className="h-4 w-4"
@@ -200,6 +220,8 @@ const AvailableFiles = ({
   advancedOpen,
   onAdvancedOpenChange,
   kindleSender,
+  azw3PrototypeVariant,
+  onShowToast,
 }: {
   book: BookDetailResponse;
   canFindReleases: boolean;
@@ -213,9 +235,12 @@ const AvailableFiles = ({
   advancedOpen: boolean;
   onAdvancedOpenChange: (open: boolean) => void;
   kindleSender: string;
+  azw3PrototypeVariant: Azw3PrototypeVariant | null;
+  onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
 }) => {
   const [kindleFormat, setKindleFormat] = useState('epub');
   const [sendingKindle, setSendingKindle] = useState<number | 'latest' | null>(null);
+  const [prototypeOverflowHistoryId, setPrototypeOverflowHistoryId] = useState<number | null>(null);
   const releases = groupFilesByRelease(book.files);
   const latestFiles = latestFilesByFormat(book.files);
   const kindleFiles = latestFilesByFormat(book.files.filter((file) => file.downloadable_by_me));
@@ -223,12 +248,20 @@ const AvailableFiles = ({
     ...new Set(
       kindleFiles
         .map((file) => file.format?.toLowerCase())
-        .filter((format): format is string => format === 'epub'),
+        .filter(
+          (format): format is string =>
+            format === 'epub' || (azw3PrototypeVariant !== null && format === 'azw3'),
+        ),
     ),
   ];
   const selectedKindleFormat = kindleFormats.includes(kindleFormat)
     ? kindleFormat
     : (kindleFormats[0] ?? null);
+  const selectedAzw3 = selectedKindleFormat === 'azw3';
+  const selectedAzw3Ready = selectedAzw3 && azw3PrototypeVariant === 'B';
+  let kindleButtonLabel = `Send ${selectedKindleFormat?.toUpperCase() ?? 'file'} to Kindle`;
+  if (selectedAzw3 && !selectedAzw3Ready) kindleButtonLabel = 'Converting AZW3 to EPUB...';
+  if (sendingKindle === 'latest') kindleButtonLabel = 'Sending to Kindle';
   const sendToKindle = async (
     selection: { format?: string; historyId?: number },
     sender: number | 'latest',
@@ -286,6 +319,22 @@ const AvailableFiles = ({
                     Download
                   </button>
                 )}
+                {azw3PrototypeVariant === 'B' && file.format?.toLowerCase() === 'azw3' && (
+                  <span className="text-xs text-violet-700 dark:text-violet-300">
+                    Converted EPUB ready
+                  </span>
+                )}
+                {azw3PrototypeVariant === 'C' && file.format?.toLowerCase() === 'azw3' && (
+                  <button
+                    type="button"
+                    className="hover-action cursor-pointer rounded-md px-2 py-1 text-sm font-medium text-sky-700 dark:text-sky-300"
+                    onClick={() =>
+                      onShowToast('Converted EPUB download is not wired in this prototype', 'info')
+                    }
+                  >
+                    Download converted EPUB
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -299,27 +348,34 @@ const AvailableFiles = ({
             >
               {kindleFormats.map((format) => (
                 <option key={format} value={format} className="bg-(--bg) text-(--text)">
-                  {format.toUpperCase()}
+                  {format === 'azw3' ? 'AZW3 (converted to EPUB)' : format.toUpperCase()}
                 </option>
               ))}
             </select>
             <button
               type="button"
-              disabled={!selectedKindleFormat || sendingKindle !== null}
+              disabled={
+                !selectedKindleFormat ||
+                sendingKindle !== null ||
+                (selectedAzw3 && !selectedAzw3Ready)
+              }
               className={`mt-2 flex w-full items-center justify-center gap-2 rounded-md border border-(--border-muted) px-3 py-2 text-sm font-medium text-(--text) disabled:cursor-not-allowed disabled:opacity-50 ${selectedKindleFormat && sendingKindle === null ? 'hover-action cursor-pointer' : ''}`}
               onClick={() =>
                 selectedKindleFormat &&
-                void sendToKindle({ format: selectedKindleFormat }, 'latest')
+                (selectedAzw3
+                  ? onShowToast('AZW3 Kindle sending is not wired in this prototype', 'info')
+                  : void sendToKindle({ format: selectedKindleFormat }, 'latest'))
               }
             >
-              {sendingKindle === 'latest' ? (
-                <>
-                  <SendingSpinner /> Sending to Kindle
-                </>
-              ) : (
-                `Send ${selectedKindleFormat?.toUpperCase() ?? 'file'} to Kindle`
-              )}
+              {sendingKindle === 'latest' && <SendingSpinner />}
+              {kindleButtonLabel}
             </button>
+            {selectedAzw3 && !selectedAzw3Ready && (
+              <p className="mt-2 text-xs text-violet-700 dark:text-violet-300">
+                Shelfmark converts AZW3 to EPUB before sending. This prototype shows the converting
+                state only.
+              </p>
+            )}
             {kindleSender && (
               <p className="mt-2 flex items-center gap-1 text-xs text-gray-500">
                 Emails come from {kindleSender}
@@ -407,6 +463,37 @@ const AvailableFiles = ({
                       >
                         <DownloadIcon />
                       </button>
+                      {azw3PrototypeVariant === 'A' && file.format?.toLowerCase() === 'azw3' && (
+                        <div className="relative">
+                          <button
+                            type="button"
+                            className="hover-action rounded-md px-2 py-1 text-xs font-medium text-sky-700 dark:text-sky-300"
+                            aria-label="More AZW3 actions"
+                            aria-expanded={prototypeOverflowHistoryId === file.history_id}
+                            onClick={() =>
+                              setPrototypeOverflowHistoryId((current) =>
+                                current === file.history_id ? null : file.history_id,
+                              )
+                            }
+                          >
+                            ...
+                          </button>
+                          {prototypeOverflowHistoryId === file.history_id && (
+                            <button
+                              type="button"
+                              className="hover-action absolute right-0 bottom-full z-30 mb-1 w-52 rounded-md border border-(--border-muted) bg-(--bg) px-3 py-2 text-left text-xs font-medium text-sky-700 shadow-lg dark:text-sky-300"
+                              onClick={() =>
+                                onShowToast(
+                                  'Converted EPUB download is not wired in this prototype',
+                                  'info',
+                                )
+                              }
+                            >
+                              Download converted EPUB
+                            </button>
+                          )}
+                        </div>
+                      )}
                       <button
                         type="button"
                         disabled={file.format?.toLowerCase() !== 'epub' || sendingKindle !== null}
@@ -872,6 +959,15 @@ export const BookDetailPage = ({
   const needsReview = useNeedsReviewBooks(isAdmin);
   const firstAddIntent = hasAutoFindReleasesIntent(location.state);
   const libraryUrl = `/library${location.search}`;
+  const isAzw3Prototype = searchParams.get('prototype') === 'azw3';
+  const requestedPrototypeVariant = searchParams.get('variant');
+  let azw3PrototypeVariant: Azw3PrototypeVariant | null = null;
+  if (isAzw3Prototype) {
+    azw3PrototypeVariant =
+      requestedPrototypeVariant === 'B' || requestedPrototypeVariant === 'C'
+        ? requestedPrototypeVariant
+        : 'A';
+  }
 
   const load = useCallback(async () => {
     if (!Number.isInteger(bookId) || bookId < 1) {
@@ -1155,6 +1251,8 @@ export const BookDetailPage = ({
           advancedOpen={advancedOpen}
           onAdvancedOpenChange={setAdvancedOpen}
           kindleSender={kindleSender}
+          azw3PrototypeVariant={azw3PrototypeVariant}
+          onShowToast={onShowToast}
         />
       )}
       <article className="mt-10 max-w-4xl border-t border-(--border-muted) pt-6">
@@ -1164,6 +1262,37 @@ export const BookDetailPage = ({
             "No description is available from this book's metadata provider."}
         </p>
       </article>
+      {isAzw3Prototype && import.meta.env.DEV && (
+        <div className="fixed right-4 bottom-4 left-4 z-50 mx-auto flex w-fit max-w-[calc(100vw-2rem)] items-center gap-2 rounded-full bg-slate-950 px-2 py-2 text-sm text-white shadow-2xl">
+          <button
+            type="button"
+            className="rounded-full px-3 py-1.5 hover:bg-white/15"
+            aria-label="Previous prototype variant"
+            onClick={() =>
+              void navigate(
+                `${location.pathname}?prototype=azw3&variant=${previousAzw3PrototypeVariant(azw3PrototypeVariant ?? 'A')}`,
+              )
+            }
+          >
+            &larr;
+          </button>
+          <span className="min-w-48 text-center text-xs font-semibold">
+            {azw3PrototypeVariant} - {azw3PrototypeVariantLabel(azw3PrototypeVariant ?? 'A')}
+          </span>
+          <button
+            type="button"
+            className="rounded-full px-3 py-1.5 hover:bg-white/15"
+            aria-label="Next prototype variant"
+            onClick={() =>
+              void navigate(
+                `${location.pathname}?prototype=azw3&variant=${nextAzw3PrototypeVariant(azw3PrototypeVariant ?? 'A')}`,
+              )
+            }
+          >
+            &rarr;
+          </button>
+        </div>
+      )}
       {deleteDialogOpen && (
         <DeleteBookDialog
           book={book}
