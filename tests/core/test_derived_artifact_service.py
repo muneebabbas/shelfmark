@@ -61,7 +61,10 @@ def test_conversion_creates_one_private_ready_artifact_and_reuses_it(tmp_path, m
     finally:
         conn.close()
 
+    converted_commands = []
+
     def fake_convert(command, **_kwargs):
+        converted_commands.append(command)
         output = command[2]
         with zipfile.ZipFile(output, "w") as archive:
             archive.writestr(
@@ -92,6 +95,7 @@ def test_conversion_creates_one_private_ready_artifact_and_reuses_it(tmp_path, m
     assert artifacts[0]["status"] == "ready"
     assert artifacts[0]["artifact_path"] != str(source)
     assert len(histories) == 1
+    assert converted_commands[0][-1:] == ["--epub-version=3"]
 
 
 def test_validation_rejects_traversal_and_persists_only_a_sanitized_error(tmp_path, monkeypatch):

@@ -261,7 +261,7 @@ class DerivedArtifactService:
             }
             run_blocking_io(
                 subprocess.run,
-                [str(CONVERTER_PATH), str(source.path), str(output)],
+                [str(CONVERTER_PATH), str(source.path), str(output), "--epub-version=3"],
                 check=True,
                 timeout=CONVERSION_TIMEOUT_SECONDS,
                 stdin=subprocess.DEVNULL,
