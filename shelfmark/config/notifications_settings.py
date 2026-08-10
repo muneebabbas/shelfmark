@@ -24,6 +24,7 @@ _EVENT_OPTIONS = [
     {"value": NotificationEvent.DOWNLOAD_COMPLETE.value, "label": "Download complete"},
     {"value": NotificationEvent.DOWNLOAD_FAILED.value, "label": "Download failed"},
     {"value": NotificationEvent.IMPORT_NEEDS_REVIEW.value, "label": "Book needs review"},
+    {"value": NotificationEvent.CONVERSION_FAILED.value, "label": "AZW3 conversion failed"},
 ]
 _EVENT_VALUES = {item["value"] for item in _EVENT_OPTIONS}
 _DEFAULT_TARGET = {"transport": "apprise", "destination": "", "events": []}

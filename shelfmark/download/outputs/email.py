@@ -270,6 +270,7 @@ def send_file_to_email(
     *,
     label: str | None = None,
     subject: str | None = None,
+    attachment_name: str | None = None,
 ) -> str:
     """Send a single file as an email attachment to ``recipient``.
 
@@ -312,7 +313,12 @@ def send_file_to_email(
     if content_type is None or encoding is not None:
         content_type = "application/octet-stream"
     main_type, sub_type = content_type.split("/", 1)
-    message.add_attachment(data, maintype=main_type, subtype=sub_type, filename=file_path.name)
+    message.add_attachment(
+        data,
+        maintype=main_type,
+        subtype=sub_type,
+        filename=attachment_name or file_path.name,
+    )
 
     send_email_message(smtp_config, message)
 

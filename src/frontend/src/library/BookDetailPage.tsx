@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { useSocket } from '../contexts/SocketContext';
@@ -7,6 +7,7 @@ import {
   cancelLibraryReview,
   cancelRequest,
   createLibraryRequest,
+  downloadConvertedLibraryEpub,
   downloadLibraryFile,
   getLibraryBook,
   getLibraryPurgePreview,
@@ -71,6 +72,10 @@ const toReleaseBook = (book: BookDetailResponse): Book => ({
 
 const dateLabel = (date: string | null): string =>
   date ? new Date(date).toLocaleDateString() : 'date unknown';
+
+const convertedEpubLabel = (file: LibraryFile): string => {
+  return file.derived_epub?.status === 'ready' ? 'Download converted EPUB' : '';
+};
 
 const DownloadIcon = () => (
   <svg
@@ -192,6 +197,7 @@ const AvailableFiles = ({
   canFindReleases,
   canDeleteReleases,
   onDownload,
+  onDownloadConverted,
   onFindReleases,
   onOpenSettings,
   onSendToKindle,
@@ -205,6 +211,7 @@ const AvailableFiles = ({
   canFindReleases: boolean;
   canDeleteReleases: boolean;
   onDownload: (file: LibraryFile) => void;
+  onDownloadConverted: (file: LibraryFile) => void;
   onFindReleases: () => void;
   onOpenSettings: () => void;
   onSendToKindle: (selection: { format?: string; historyId?: number }) => Promise<void>;
@@ -216,19 +223,46 @@ const AvailableFiles = ({
 }) => {
   const [kindleFormat, setKindleFormat] = useState('epub');
   const [sendingKindle, setSendingKindle] = useState<number | 'latest' | null>(null);
+  const [convertedMenuHistoryId, setConvertedMenuHistoryId] = useState<number | null>(null);
+  const convertedMenuRef = useRef<HTMLDivElement | null>(null);
   const releases = groupFilesByRelease(book.files);
   const latestFiles = latestFilesByFormat(book.files);
-  const kindleFiles = latestFilesByFormat(book.files.filter((file) => file.downloadable_by_me));
+  const kindleFiles = latestFilesByFormat(
+    book.files.filter(
+      (file) =>
+        file.downloadable_by_me &&
+        (file.format?.toLowerCase() !== 'azw3' || file.derived_epub?.status === 'ready'),
+    ),
+  );
   const kindleFormats = [
     ...new Set(
       kindleFiles
         .map((file) => file.format?.toLowerCase())
-        .filter((format): format is string => format === 'epub'),
+        .filter((format): format is string => format === 'epub' || format === 'azw3'),
     ),
   ];
   const selectedKindleFormat = kindleFormats.includes(kindleFormat)
     ? kindleFormat
     : (kindleFormats[0] ?? null);
+  const selectedAzw3 = selectedKindleFormat === 'azw3';
+  const selectedAzw3File = kindleFiles
+    .filter((file) => file.format?.toLowerCase() === 'azw3')
+    .toSorted(
+      (left, right) =>
+        (right.downloaded_at ?? '').localeCompare(left.downloaded_at ?? '') ||
+        right.history_id - left.history_id,
+    )[0];
+  const selectedAzw3Ready = selectedAzw3File?.derived_epub?.status === 'ready';
+  const handleConvertedAction = (file: LibraryFile) => {
+    onDownloadConverted(file);
+  };
+  let kindleButtonLabel = `Send ${selectedKindleFormat?.toUpperCase() ?? 'file'} to Kindle`;
+  if (sendingKindle === 'latest') kindleButtonLabel = 'Sending to Kindle';
+  const advancedKindleTitle = (file: LibraryFile): string => {
+    if (file.format?.toLowerCase() === 'azw3') return 'A converted EPUB will be sent to Kindle';
+    if (file.format?.toLowerCase() === 'epub') return `Email will come from ${kindleSender}`;
+    return 'Send to Kindle is available for EPUB files only';
+  };
   const sendToKindle = async (
     selection: { format?: string; historyId?: number },
     sender: number | 'latest',
@@ -240,6 +274,17 @@ const AvailableFiles = ({
       setSendingKindle(null);
     }
   };
+
+  useDependencyEffect(() => {
+    if (convertedMenuHistoryId === null) return undefined;
+    const dismissMenu = (event: MouseEvent) => {
+      const target = event.target;
+      if (target instanceof Node && convertedMenuRef.current?.contains(target)) return;
+      setConvertedMenuHistoryId(null);
+    };
+    window.addEventListener('mousedown', dismissMenu);
+    return () => window.removeEventListener('mousedown', dismissMenu);
+  }, [convertedMenuHistoryId]);
 
   return (
     <section className="mt-10">
@@ -286,6 +331,17 @@ const AvailableFiles = ({
                     Download
                   </button>
                 )}
+                {file.downloadable_by_me &&
+                  file.format?.toLowerCase() === 'azw3' &&
+                  file.derived_epub?.status === 'ready' && (
+                    <button
+                      type="button"
+                      className="hover-action cursor-pointer rounded-md px-2 py-1 text-sm font-medium text-(--text) disabled:cursor-not-allowed disabled:opacity-50"
+                      onClick={() => handleConvertedAction(file)}
+                    >
+                      {convertedEpubLabel(file)}
+                    </button>
+                  )}
               </div>
             ))}
           </div>
@@ -305,21 +361,25 @@ const AvailableFiles = ({
             </select>
             <button
               type="button"
-              disabled={!selectedKindleFormat || sendingKindle !== null}
+              disabled={
+                !selectedKindleFormat ||
+                sendingKindle !== null ||
+                (selectedAzw3 && !selectedAzw3Ready)
+              }
               className={`mt-2 flex w-full items-center justify-center gap-2 rounded-md border border-(--border-muted) px-3 py-2 text-sm font-medium text-(--text) disabled:cursor-not-allowed disabled:opacity-50 ${selectedKindleFormat && sendingKindle === null ? 'hover-action cursor-pointer' : ''}`}
               onClick={() =>
                 selectedKindleFormat &&
                 void sendToKindle({ format: selectedKindleFormat }, 'latest')
               }
             >
-              {sendingKindle === 'latest' ? (
-                <>
-                  <SendingSpinner /> Sending to Kindle
-                </>
-              ) : (
-                `Send ${selectedKindleFormat?.toUpperCase() ?? 'file'} to Kindle`
-              )}
+              {sendingKindle === 'latest' && <SendingSpinner />}
+              {kindleButtonLabel}
             </button>
+            {selectedAzw3 && (
+              <p className="mt-2 text-xs text-gray-600 dark:text-gray-300">
+                A converted EPUB will be sent to Kindle.
+              </p>
+            )}
             {kindleSender && (
               <p className="mt-2 flex items-center gap-1 text-xs text-gray-500">
                 Emails come from {kindleSender}
@@ -409,20 +469,62 @@ const AvailableFiles = ({
                       </button>
                       <button
                         type="button"
-                        disabled={file.format?.toLowerCase() !== 'epub' || sendingKindle !== null}
-                        title={
-                          file.format?.toLowerCase() === 'epub'
-                            ? `Email will come from ${kindleSender}`
-                            : 'Send to Kindle is available for EPUB files only'
+                        disabled={
+                          !['epub', 'azw3'].includes(file.format?.toLowerCase() ?? '') ||
+                          sendingKindle !== null ||
+                          (file.format?.toLowerCase() === 'azw3' &&
+                            file.derived_epub?.status !== 'ready')
                         }
-                        aria-label="Send to Kindle"
-                        className={`rounded-md p-2 text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-300 ${file.format?.toLowerCase() === 'epub' && sendingKindle === null ? 'hover-action cursor-pointer' : ''}`}
+                        title={advancedKindleTitle(file)}
+                        aria-label={
+                          file.format?.toLowerCase() === 'azw3' &&
+                          file.derived_epub?.status !== 'ready'
+                            ? advancedKindleTitle(file)
+                            : 'Send to Kindle'
+                        }
+                        className={`rounded-md p-2 text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-300 ${(file.format?.toLowerCase() === 'epub' || (file.format?.toLowerCase() === 'azw3' && file.derived_epub?.status === 'ready')) && sendingKindle === null ? 'hover-action cursor-pointer' : ''}`}
                         onClick={() =>
                           void sendToKindle({ historyId: file.history_id }, file.history_id)
                         }
                       >
                         {sendingKindle === file.history_id ? <SendingSpinner /> : <SendIcon />}
                       </button>
+                      {file.downloadable_by_me &&
+                        file.format?.toLowerCase() === 'azw3' &&
+                        file.derived_epub?.status === 'ready' && (
+                          <div
+                            ref={
+                              convertedMenuHistoryId === file.history_id
+                                ? convertedMenuRef
+                                : undefined
+                            }
+                            className="relative"
+                          >
+                            <button
+                              type="button"
+                              title={convertedEpubLabel(file)}
+                              aria-label="More AZW3 actions"
+                              aria-expanded={convertedMenuHistoryId === file.history_id}
+                              className="hover-action rounded-md px-2 py-1 text-xs font-medium text-(--text)"
+                              onClick={() =>
+                                setConvertedMenuHistoryId((current) =>
+                                  current === file.history_id ? null : file.history_id,
+                                )
+                              }
+                            >
+                              ...
+                            </button>
+                            {convertedMenuHistoryId === file.history_id && (
+                              <button
+                                type="button"
+                                className="hover-action absolute right-0 bottom-full z-30 mb-1 w-52 rounded-md border border-(--border-muted) bg-(--bg) px-3 py-2 text-left text-xs font-medium text-(--text) shadow-lg"
+                                onClick={() => handleConvertedAction(file)}
+                              >
+                                Download converted EPUB
+                              </button>
+                            )}
+                          </div>
+                        )}
                     </div>
                   </div>
                 ))}
@@ -1128,6 +1230,13 @@ export const BookDetailPage = ({
           onDownload={(file) =>
             void mutate(
               () => downloadLibraryFile(book.book_id, { historyId: file.history_id }),
+              'Download started',
+              false,
+            )
+          }
+          onDownloadConverted={(file) =>
+            void mutate(
+              () => downloadConvertedLibraryEpub(book.book_id, file.history_id),
               'Download started',
               false,
             )

@@ -210,6 +210,16 @@ def _torrent_path(download_path: Any, mapping: dict[str, str]) -> Any:
     return mapping.get(download_path) or download_path
 
 
+def _derived_epub_status(artifact: dict[str, Any]) -> str:
+    """Expose ready only when the stored artifact remains validated and present."""
+    if artifact["status"] != "ready":
+        return str(artifact["status"])
+    path = normalize_optional_text(artifact.get("artifact_path"))
+    if artifact["validation_result"] == "valid" and path and Path(path).is_file():
+        return "ready"
+    return "unavailable"
+
+
 def _serialize_book_detail(
     book: dict[str, Any],
     *,
@@ -217,6 +227,7 @@ def _serialize_book_detail(
     in_flight: list[dict[str, Any]],
     downloadable_history_ids: set[int],
     relative_paths_by_output: dict[str, str],
+    derived_epub_by_history_id: dict[int, dict[str, Any]],
 ) -> dict[str, Any]:
     """Per #04 route table: GET /api/library/books/:book_id response shape.
 
@@ -252,6 +263,11 @@ def _serialize_book_detail(
                 "download_path": f.get("download_path"),
                 "torrent_path": _torrent_path(f.get("download_path"), relative_paths_by_output),
                 "downloadable_by_me": int(f["id"]) in downloadable_history_ids,
+                **(
+                    {"derived_epub": derived_epub_by_history_id[int(f["id"])]}
+                    if int(f["id"]) in derived_epub_by_history_id
+                    else {}
+                ),
             }
             for f in files
         ],
@@ -539,6 +555,18 @@ def register_library_routes(
         try:
             files = library_service.get_files_on_disk(book_id)
             in_flight = library_service.get_in_flight_files(book_id)
+            derived_epub_by_history_id = {
+                int(file["id"]): {"status": _derived_epub_status(derived)}
+                for file in files
+                if normalize_positive_int(file.get("id")) is not None
+                and (
+                    derived := library_service.get_derived_epub(
+                        book_id=book_id, history_id=int(file["id"])
+                    )
+                )
+                is not None
+                and _derived_epub_status(derived) == "ready"
+            }
         except _OPERATIONAL_ERRORS as exc:
             logger.error_trace(
                 "Library book_detail files lookup failed",
@@ -575,6 +603,7 @@ def register_library_routes(
             in_flight=in_flight,
             downloadable_history_ids=downloadable_history_ids,
             relative_paths_by_output=relative_paths_by_output,
+            derived_epub_by_history_id=derived_epub_by_history_id,
         )
         detail["in_my_library"] = library_service.is_in_library(
             user_id=actor.db_user_id, book_id=book_id
@@ -711,6 +740,93 @@ def register_library_routes(
             as_attachment=True,
         )
 
+    @app.route(
+        "/api/library/books/<int:book_id>/downloads/<int:history_id>/converted-epub",
+        methods=["GET"],
+    )
+    def api_library_download_converted_epub(
+        book_id: int, history_id: int
+    ) -> Response | LibraryRouteResponse:
+        action = "download_converted_epub"
+        gate = _actor_gate(action)
+        if not isinstance(gate, _ActorContext):
+            return gate
+        membership_error = _membership_or_403(gate, book_id, action)
+        if membership_error is not None:
+            return membership_error
+        try:
+            artifact = library_service.get_derived_epub(book_id=book_id, history_id=history_id)
+            book = library_service.get_book(book_id)
+        except _OPERATIONAL_ERRORS as exc:
+            logger.error_trace(
+                "Library download_converted_epub lookup failed",
+                extra={"action": action, "book_id": book_id, "history_id": history_id, "exc": exc},
+            )
+            return jsonify({"error": "Internal server error"}), 500
+        if artifact is None:
+            return _error_response(
+                action=action, status_code=404, error="Converted EPUB unavailable", book_id=book_id
+            )
+        if artifact["status"] in {"pending", "converting", "interrupted"}:
+            return _error_response(
+                action=action,
+                status_code=409,
+                error="Converted EPUB unavailable",
+                book_id=book_id,
+            )
+        path = normalize_optional_text(artifact.get("artifact_path"))
+        if (
+            artifact["status"] != "ready"
+            or artifact.get("validation_result") != "valid"
+            or not path
+        ):
+            return _error_response(
+                action=action, status_code=409, error="Converted EPUB unavailable", book_id=book_id
+            )
+        artifact_path = Path(path)
+        if not artifact_path.is_file():
+            return _error_response(
+                action=action, status_code=404, error="Converted EPUB unavailable", book_id=book_id
+            )
+        return send_file(
+            artifact_path,
+            download_name=_book_attachment_name(
+                book=book, book_id=book_id, download_path=str(artifact_path)
+            ),
+            as_attachment=True,
+        )
+
+    @app.route(
+        "/api/library/books/<int:book_id>/downloads/<int:history_id>/converted-epub",
+        methods=["POST"],
+    )
+    def api_library_retry_converted_epub(
+        book_id: int, history_id: int
+    ) -> Response | LibraryRouteResponse:
+        action = "retry_converted_epub"
+        gate = _actor_gate(action)
+        if not isinstance(gate, _ActorContext):
+            return gate
+        membership_error = _membership_or_403(gate, book_id, action)
+        if membership_error is not None:
+            return membership_error
+        try:
+            retried = library_service.retry_derived_epub(book_id=book_id, history_id=history_id)
+        except _OPERATIONAL_ERRORS as exc:
+            logger.error_trace(
+                "Library retry_converted_epub failed",
+                extra={"action": action, "book_id": book_id, "history_id": history_id, "exc": exc},
+            )
+            return jsonify({"error": "Internal server error"}), 500
+        if not retried:
+            return _error_response(
+                action=action,
+                status_code=409,
+                error="Converted EPUB unavailable",
+                book_id=book_id,
+            )
+        return jsonify({"status": "converting"}), 202
+
     @app.route("/api/library/books/<int:book_id>/send-to-kindle", methods=["POST"])
     def api_library_send_to_kindle(book_id: int) -> Response | LibraryRouteResponse:
         action = "send_to_kindle"
@@ -752,6 +868,7 @@ def register_library_routes(
                     user_id=None,
                 )
             )
+            book = library_service.get_book(book_id)
         except _OPERATIONAL_ERRORS as exc:
             logger.error_trace(
                 "Library send_to_kindle resolve failed",
@@ -763,6 +880,14 @@ def register_library_routes(
                 action=action,
                 status_code=404,
                 error="No compatible file found",
+                book_id=book_id,
+            )
+        conversion_status = normalize_optional_text(resolved.get("conversion_status"))
+        if conversion_status is not None:
+            return _error_response(
+                action=action,
+                status_code=409,
+                error="Converted EPUB unavailable",
                 book_id=book_id,
             )
 
@@ -786,6 +911,10 @@ def register_library_routes(
                 book_id=book_id,
             )
 
+        attachment_name = _book_attachment_name(
+            book=book, book_id=book_id, download_path=download_path
+        )
+
         from shelfmark.download.outputs.email import (
             EmailOutputError,
             send_file_to_email,
@@ -796,7 +925,8 @@ def register_library_routes(
                 Path(download_path),
                 recipient,
                 label=recipient,
-                subject=Path(download_path).name,
+                subject=attachment_name,
+                attachment_name=attachment_name,
             )
         except EmailOutputError as exc:
             logger.error_trace(

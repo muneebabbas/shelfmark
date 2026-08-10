@@ -108,6 +108,7 @@ def test_send_file_to_email_composes_and_sends_then_returns_masked_recipient(
             "alice@kindle.com",
             label="alice@kindle.com",
             subject="Ender's Game",
+            attachment_name="Ender's Game.epub",
         )
 
     assert masked == "a***@kindle.com"
@@ -117,3 +118,4 @@ def test_send_file_to_email_composes_and_sends_then_returns_masked_recipient(
     assert message["To"] == "alice@kindle.com"
     assert message["From"] == "Shelfmark <user@example.com>"
     assert message["Subject"] == "Ender's Game"
+    assert message.get_payload()[1].get_filename() == "Ender's Game.epub"

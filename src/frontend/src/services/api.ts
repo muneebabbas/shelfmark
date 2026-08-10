@@ -617,6 +617,40 @@ export const downloadLibraryFile = async (
   URL.revokeObjectURL(url);
 };
 
+export const downloadConvertedLibraryEpub = async (
+  bookId: number,
+  historyId: number,
+): Promise<void> => {
+  const response = await fetch(
+    `${API.libraryBooks}/${bookId}/downloads/${historyId}/converted-epub`,
+    { credentials: 'include' },
+  );
+  if (!response.ok) {
+    const payload: unknown = await response.json().catch(() => null);
+    throw new Error(
+      isRecord(payload) && typeof payload.error === 'string'
+        ? payload.error
+        : 'Converted EPUB is unavailable',
+    );
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = attachmentFilename(response.headers.get('Content-Disposition'));
+  link.click();
+  URL.revokeObjectURL(url);
+};
+
+export const retryConvertedLibraryEpub = async (
+  bookId: number,
+  historyId: number,
+): Promise<void> => {
+  await fetchJSON(`${API.libraryBooks}/${bookId}/downloads/${historyId}/converted-epub`, {
+    method: 'POST',
+  });
+};
+
 // Download a specific release (from ReleaseModal)
 export type DownloadReleasePayload = {
   source: string;

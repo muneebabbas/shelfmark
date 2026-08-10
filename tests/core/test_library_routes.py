@@ -185,6 +185,39 @@ def _seed_history_row(
         conn.close()
 
 
+def _seed_derived_artifact(
+    user_db: UserDB,
+    *,
+    history_id: int,
+    book_id: int,
+    status: str,
+    artifact_path: str | None = None,
+) -> None:
+    conn = user_db._connect()
+    try:
+        conn.execute(
+            """
+            INSERT INTO derived_artifacts (
+                source_history_id, book_id, source_hash, target_format,
+                converter_version, normalized_options, status, artifact_path,
+                validation_result, created_at, updated_at
+            ) VALUES (?, ?, 'source-hash', 'epub', 'test', '{}', ?, ?, ?, ?, ?)
+            """,
+            (
+                history_id,
+                book_id,
+                status,
+                artifact_path,
+                "valid" if status == "ready" else None,
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T00:00:00+00:00",
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def test_add_book_requires_authentication(app):
     client = app.test_client()
     resp = client.post(
@@ -209,6 +242,83 @@ def test_add_book_returns_idempotent_payload_and_caches_metadata(app, user_db):
     assert first["in_my_library"] is True
     assert first["files_exist_globally"] is False
     assert first["in_flight_globally"] is False
+
+
+def test_book_detail_and_download_expose_only_valid_ready_derived_epub(app, user_db, tmp_path):
+    alice = user_db.create_user(username="alice")
+    client = _authed_client(app, alice)
+    book_id = client.post(
+        "/api/library/books",
+        json={"metadata_provider": "hardcover", "provider_book_id": "derived-ready"},
+    ).json["book_id"]
+    source = tmp_path / "Book.azw3"
+    source.write_bytes(b"azw3")
+    history_id = _seed_history_row(
+        user_db,
+        task_id="derived-ready",
+        user_id=alice["id"],
+        username="alice",
+        book_id=book_id,
+        fmt="azw3",
+        download_path=str(source),
+    )
+    artifact = tmp_path / "Book.converted.epub"
+    artifact.write_bytes(b"validated epub")
+    _seed_derived_artifact(
+        user_db,
+        history_id=history_id,
+        book_id=book_id,
+        status="ready",
+        artifact_path=str(artifact),
+    )
+
+    detail = client.get(f"/api/library/books/{book_id}")
+    converted = client.get(f"/api/library/books/{book_id}/downloads/{history_id}/converted-epub")
+
+    assert detail.status_code == 200
+    assert detail.json["files"][0]["format"] == "azw3"
+    assert detail.json["files"][0]["derived_epub"] == {"status": "ready"}
+    assert converted.status_code == 200
+    assert converted.data == b"validated epub"
+    assert (
+        converted.headers["Content-Disposition"]
+        == 'attachment; filename="Book derived-ready - Author A.epub"'
+    )
+
+
+def test_derived_epub_download_reports_conversion_state_and_respects_book_membership(
+    app, user_db, tmp_path
+):
+    alice = user_db.create_user(username="alice")
+    bob = user_db.create_user(username="bob")
+    alice_client = _authed_client(app, alice)
+    book_id = alice_client.post(
+        "/api/library/books",
+        json={"metadata_provider": "hardcover", "provider_book_id": "derived-pending"},
+    ).json["book_id"]
+    source = tmp_path / "Book.azw3"
+    source.write_bytes(b"azw3")
+    history_id = _seed_history_row(
+        user_db,
+        task_id="derived-pending",
+        user_id=alice["id"],
+        username="alice",
+        book_id=book_id,
+        fmt="azw3",
+        download_path=str(source),
+    )
+    _seed_derived_artifact(user_db, history_id=history_id, book_id=book_id, status="converting")
+
+    pending = alice_client.get(
+        f"/api/library/books/{book_id}/downloads/{history_id}/converted-epub"
+    )
+    forbidden = _authed_client(app, bob).get(
+        f"/api/library/books/{book_id}/downloads/{history_id}/converted-epub"
+    )
+
+    assert pending.status_code == 409
+    assert pending.json == {"error": "Converted EPUB unavailable"}
+    assert forbidden.status_code == 403
 
 
 def test_request_only_user_can_add_a_book_and_request_it_when_no_files_exist(app, user_db):
@@ -1278,6 +1388,43 @@ def test_send_to_kindle_success_path(app, user_db, library_service, tmp_path):
     args, _kwargs = fake_send.call_args
     assert str(args[0]) == str(alternate_path)
     assert args[1] == "reader@example.test"
+
+
+def test_send_to_kindle_uses_ready_derived_epub_for_selected_azw3(app, user_db, tmp_path):
+    alice = user_db.create_user(username="alice")
+    user_db.update_personal_preferences(alice["id"], kindle_address="reader@example.test")
+    book_id = client_post_book(app, alice, "hardcover", "derived-kindle")
+    source = tmp_path / "book.azw3"
+    source.write_bytes(b"azw3")
+    history_id = _seed_history_row(
+        user_db,
+        task_id="derived-kindle",
+        user_id=alice["id"],
+        username="alice",
+        book_id=book_id,
+        fmt="azw3",
+        download_path=str(source),
+    )
+    artifact = tmp_path / "book.epub"
+    artifact.write_bytes(b"epub")
+    _seed_derived_artifact(
+        user_db,
+        history_id=history_id,
+        book_id=book_id,
+        status="ready",
+        artifact_path=str(artifact),
+    )
+
+    with patch(
+        "shelfmark.download.outputs.email.send_file_to_email", return_value="r***@example.test"
+    ) as fake_send:
+        response = _authed_client(app, alice).post(
+            f"/api/library/books/{book_id}/send-to-kindle", json={"history_id": history_id}
+        )
+
+    assert response.status_code == 200
+    assert response.json["format"] == "epub"
+    assert str(fake_send.call_args.args[0]) == str(artifact)
 
 
 def test_link_download_endpoint_inserts_user_downloads_row(app, user_db, library_service):

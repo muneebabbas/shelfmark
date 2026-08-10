@@ -40,7 +40,7 @@ def _sanitize(name: str | None, max_length: int = 245) -> str:
         return ""
 
     sanitized = INVALID_CHARS.sub("_", name)
-    sanitized = re.sub(r"^[\s.]+|[\s.]+$", "", sanitized)  # Strip whitespace and dots
+    sanitized = sanitized.strip(" .\t\n\r\v\f")  # Strip whitespace and dots
     sanitized = re.sub(r"_+", "_", sanitized)  # Collapse underscores
     return sanitized[:max_length]
 

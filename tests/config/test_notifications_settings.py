@@ -21,6 +21,7 @@ def test_notifications_tab_exposes_only_administrator_operational_targets():
         "download_complete",
         "download_failed",
         "import_needs_review",
+        "conversion_failed",
     ]
 
 

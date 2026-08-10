@@ -211,6 +211,109 @@ describe('BookDetailPage request-only availability', () => {
     expect(screen.queryByText(/Selected format|No Kindle-compatible|Auto \(EPUB\)/)).toBeNull();
   });
 
+  it('offers ready AZW3 as a Kindle source with a conversion note', async () => {
+    const azw3Book = {
+      ...book,
+      files: [
+        ...book.files,
+        {
+          ...book.files[0],
+          history_id: 11,
+          format: 'azw3',
+          derived_epub: { status: 'ready' },
+        },
+      ],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          new Response(JSON.stringify(url === '/api/library/books/1' ? azw3Book : {})),
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter initialEntries={['/library/1']}>
+        <Routes>
+          <Route
+            path="/library/:bookId"
+            element={
+              <BookDetailPage
+                autoFindReleases={false}
+                canFindReleases={false}
+                canDeleteReleases={false}
+                isRequestOnly={false}
+                isAdmin={false}
+                onFindReleases={() => undefined}
+                onOpenSettings={() => undefined}
+                kindleSender="library@legendpak.com"
+                onShowToast={() => undefined}
+              />
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const format = await screen.findByRole('combobox');
+    await user.selectOptions(format, 'azw3');
+
+    expect(screen.getByText('A converted EPUB will be sent to Kindle.')).not.toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Send AZW3 to Kindle' }).hasAttribute('disabled'),
+    ).toBe(false);
+  });
+
+  it('expands the advanced converted EPUB download instead of downloading immediately', async () => {
+    const azw3Book = {
+      ...book,
+      files: [
+        {
+          ...book.files[0],
+          history_id: 11,
+          format: 'azw3',
+          derived_epub: { status: 'ready' },
+        },
+      ],
+    };
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(new Response(JSON.stringify(url === '/api/library/books/1' ? azw3Book : {}))),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter initialEntries={['/library/1']}>
+        <Routes>
+          <Route
+            path="/library/:bookId"
+            element={
+              <BookDetailPage
+                autoFindReleases={false}
+                canFindReleases={false}
+                canDeleteReleases={false}
+                isRequestOnly={false}
+                isAdmin={false}
+                onFindReleases={() => undefined}
+                onOpenSettings={() => undefined}
+                kindleSender="library@legendpak.com"
+                onShowToast={() => undefined}
+              />
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(await screen.findByText('Advanced: show all releases (1)'));
+    await user.click(screen.getByRole('button', { name: 'More AZW3 actions' }));
+
+    expect(screen.getAllByRole('button', { name: 'Download converted EPUB' })).toHaveLength(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('allows a new request after a previous request was cancelled', async () => {
     const unavailableBook = { ...book, files: [] };
     vi.stubGlobal(

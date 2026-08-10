@@ -23,6 +23,7 @@ from defusedxml.common import DefusedXmlException
 
 from shelfmark.config.env import TMP_DIR
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.notifications import NotificationContext, NotificationEvent, notify_admin
 from shelfmark.core.request_helpers import now_utc_iso
 from shelfmark.download.fs import run_blocking_io
 
@@ -233,6 +234,31 @@ class DerivedArtifactService:
         finally:
             conn.close()
 
+    def _notify_failure(self, artifact_id: int, error_code: str) -> None:
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                """SELECT b.title, b.author FROM derived_artifacts da
+                   LEFT JOIN books b ON b.id = da.book_id WHERE da.id = ?""",
+                (artifact_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            return
+        try:
+            notify_admin(
+                NotificationEvent.CONVERSION_FAILED,
+                NotificationContext(
+                    event=NotificationEvent.CONVERSION_FAILED,
+                    title=str(row["title"] or "Unknown title"),
+                    author=str(row["author"] or "Unknown author"),
+                    error_message=error_code,
+                ),
+            )
+        except (RuntimeError, TypeError, ValueError) as exc:
+            logger.warning("Failed to notify admin of EPUB conversion failure: %s", exc)
+
     def convert_history_id(self, history_id: int) -> None:
         """Convert one source File. Failures only affect the private artifact record."""
         source = self._source_file(history_id)
@@ -299,17 +325,21 @@ class DerivedArtifactService:
         except subprocess.TimeoutExpired:
             logger.warning("AZW3 conversion timed out for history_id=%s", history_id)
             self._mark_failure(artifact_id, "timeout")
+            self._notify_failure(artifact_id, "timeout")
         except subprocess.CalledProcessError:
             logger.warning("AZW3 conversion failed for history_id=%s", history_id, exc_info=True)
             self._mark_failure(artifact_id, "converter_failed")
+            self._notify_failure(artifact_id, "converter_failed")
         except ArtifactValidationError as exc:
             logger.warning(
                 "AZW3 conversion validation failed for history_id=%s: %s", history_id, exc
             )
             self._mark_failure(artifact_id, str(exc))
+            self._notify_failure(artifact_id, str(exc))
         except OSError, RuntimeError:
             logger.warning("AZW3 conversion failed for history_id=%s", history_id, exc_info=True)
             self._mark_failure(artifact_id, "conversion_failed")
+            self._notify_failure(artifact_id, "conversion_failed")
         finally:
             if workspace is not None:
                 run_blocking_io(shutil.rmtree, workspace, ignore_errors=True)
