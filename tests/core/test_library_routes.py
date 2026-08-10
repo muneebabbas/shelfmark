@@ -317,7 +317,7 @@ def test_derived_epub_download_reports_conversion_state_and_respects_book_member
     )
 
     assert pending.status_code == 409
-    assert pending.json == {"error": "Converting"}
+    assert pending.json == {"error": "Converted EPUB unavailable"}
     assert forbidden.status_code == 403
 
 

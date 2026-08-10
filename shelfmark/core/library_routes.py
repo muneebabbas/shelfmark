@@ -769,7 +769,10 @@ def register_library_routes(
             )
         if artifact["status"] in {"pending", "converting", "interrupted"}:
             return _error_response(
-                action=action, status_code=409, error="Converting", book_id=book_id
+                action=action,
+                status_code=409,
+                error="Converted EPUB unavailable",
+                book_id=book_id,
             )
         path = normalize_optional_text(artifact.get("artifact_path"))
         if (
@@ -883,9 +886,7 @@ def register_library_routes(
             return _error_response(
                 action=action,
                 status_code=409,
-                error="Converting"
-                if conversion_status in {"pending", "converting", "interrupted"}
-                else "Converted EPUB unavailable",
+                error="Converted EPUB unavailable",
                 book_id=book_id,
             )
 
