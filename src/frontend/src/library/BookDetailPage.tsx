@@ -267,6 +267,7 @@ const AvailableFiles = ({
   const selectedAzw3Ready =
     selectedAzw3 && (azw3PrototypeVariant === 'B' || azw3PrototypeVariant === 'D');
   let kindleButtonLabel = `Send ${selectedKindleFormat?.toUpperCase() ?? 'file'} to Kindle`;
+  if (selectedAzw3Ready) kindleButtonLabel = 'Send converted EPUB to Kindle';
   if (selectedAzw3 && !selectedAzw3Ready) kindleButtonLabel = 'Converting AZW3 to EPUB...';
   if (sendingKindle === 'latest') kindleButtonLabel = 'Sending to Kindle';
   const sendToKindle = async (
@@ -329,7 +330,7 @@ const AvailableFiles = ({
                   )}
                 {(azw3PrototypeVariant === 'B' || azw3PrototypeVariant === 'D') &&
                   file.format?.toLowerCase() === 'azw3' && (
-                    <span className="text-xs text-violet-700 dark:text-violet-300">
+                    <span className="text-xs text-gray-600 dark:text-gray-300">
                       Converted EPUB ready
                     </span>
                   )}
@@ -337,14 +338,14 @@ const AvailableFiles = ({
                   <div className="relative flex">
                     <button
                       type="button"
-                      className="hover-action cursor-pointer rounded-l-md border border-(--border-muted) px-2 py-1 text-sm font-medium text-sky-700 dark:text-sky-300"
+                      className="hover-action cursor-pointer rounded-l-md border border-(--border-muted) px-2 py-1 text-sm font-medium text-(--text)"
                       onClick={() => onDownload(file)}
                     >
                       Download
                     </button>
                     <button
                       type="button"
-                      className="hover-action cursor-pointer rounded-r-md border border-l-0 border-(--border-muted) px-2 py-1 text-sm font-medium text-sky-700 dark:text-sky-300"
+                      className="hover-action cursor-pointer rounded-r-md border border-l-0 border-(--border-muted) px-2 py-1 text-sm font-medium text-(--text)"
                       aria-label="Download options"
                       aria-expanded={prototypeDownloadMenuHistoryId === file.history_id}
                       onClick={() =>
@@ -358,7 +359,7 @@ const AvailableFiles = ({
                     {prototypeDownloadMenuHistoryId === file.history_id && (
                       <button
                         type="button"
-                        className="hover-action absolute top-full right-0 z-30 mt-1 w-52 rounded-md border border-(--border-muted) bg-(--bg) px-3 py-2 text-left text-xs font-medium text-sky-700 shadow-lg dark:text-sky-300"
+                        className="hover-action absolute top-full right-0 z-30 mt-1 w-52 rounded-md border border-(--border-muted) bg-(--bg) px-3 py-2 text-left text-xs font-medium text-(--text) shadow-lg"
                         onClick={() =>
                           onShowToast(
                             'Converted EPUB download is not wired in this prototype',
@@ -374,7 +375,7 @@ const AvailableFiles = ({
                 {azw3PrototypeVariant === 'C' && file.format?.toLowerCase() === 'azw3' && (
                   <button
                     type="button"
-                    className="hover-action cursor-pointer rounded-md px-2 py-1 text-sm font-medium text-sky-700 dark:text-sky-300"
+                    className="hover-action cursor-pointer rounded-md px-2 py-1 text-sm font-medium text-(--text)"
                     onClick={() =>
                       onShowToast('Converted EPUB download is not wired in this prototype', 'info')
                     }
@@ -531,7 +532,7 @@ const AvailableFiles = ({
                           <div className="relative">
                             <button
                               type="button"
-                              className="hover-action rounded-md px-2 py-1 text-xs font-medium text-sky-700 dark:text-sky-300"
+                              className="hover-action rounded-md px-2 py-1 text-xs font-medium text-(--text)"
                               aria-label="More AZW3 actions"
                               aria-expanded={prototypeOverflowHistoryId === file.history_id}
                               onClick={() =>
@@ -545,7 +546,7 @@ const AvailableFiles = ({
                             {prototypeOverflowHistoryId === file.history_id && (
                               <button
                                 type="button"
-                                className="hover-action absolute right-0 bottom-full z-30 mb-1 w-52 rounded-md border border-(--border-muted) bg-(--bg) px-3 py-2 text-left text-xs font-medium text-sky-700 shadow-lg dark:text-sky-300"
+                                className="hover-action absolute right-0 bottom-full z-30 mb-1 w-52 rounded-md border border-(--border-muted) bg-(--bg) px-3 py-2 text-left text-xs font-medium text-(--text) shadow-lg"
                                 onClick={() =>
                                   onShowToast(
                                     'Converted EPUB download is not wired in this prototype',
