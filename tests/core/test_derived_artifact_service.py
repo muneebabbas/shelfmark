@@ -70,8 +70,8 @@ def test_conversion_creates_one_private_ready_artifact_and_reuses_it(tmp_path, m
             )
             archive.writestr(
                 "EPUB/package.opf",
-                '<package><manifest><item id="chapter" href="chapter.xhtml"/>'
-                '<item id="nav" href="nav.xhtml" properties="nav"/></manifest>'
+                '<package><manifest><item id="nav" href="nav.xhtml" properties="nav"/>'
+                '<item id="chapter" href="chapter.xhtml"/></manifest>'
                 '<spine><itemref idref="chapter"/></spine></package>',
             )
             archive.writestr("EPUB/chapter.xhtml", "<html/>")

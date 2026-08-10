@@ -106,7 +106,7 @@ def validate_epub(path: Path) -> None:
                 if target not in names:
                     raise ArtifactValidationError("invalid_reference")
                 manifest_items[item_id] = target
-                has_navigation = "nav" in (item.get("properties") or "").split()
+                has_navigation |= "nav" in (item.get("properties") or "").split()
             spine_refs = [itemref.get("idref") for itemref in spine.findall("{*}itemref")]
             if not spine_refs or any(ref not in manifest_items for ref in spine_refs):
                 raise ArtifactValidationError("invalid_spine")
@@ -139,12 +139,26 @@ class DerivedArtifactService:
             max_workers=2, thread_name_prefix="epub-convert"
         )
         self._lock = threading.Lock()
+        self._recover_interrupted_conversions()
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._db_path)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         return conn
+
+    def _recover_interrupted_conversions(self) -> None:
+        """Make work abandoned by a prior process eligible for an idempotent retry."""
+        conn = self._connect()
+        try:
+            conn.execute(
+                "UPDATE derived_artifacts SET status = 'interrupted', updated_at = ? "
+                "WHERE status = 'converting'",
+                (now_utc_iso(),),
+            )
+            conn.commit()
+        finally:
+            conn.close()
 
     def schedule_history_ids(self, history_ids: list[int]) -> None:
         """Submit completed AZW3 File conversions without blocking finalization."""
@@ -171,7 +185,7 @@ class DerivedArtifactService:
         with self._lock:
             conn = self._connect()
             try:
-                conn.execute(
+                cursor = conn.execute(
                     """INSERT OR IGNORE INTO derived_artifacts (
                     source_history_id, book_id, source_hash, target_format, converter_version,
                     normalized_options, status, created_at, updated_at
@@ -263,10 +277,10 @@ class DerivedArtifactService:
             output_hash = run_blocking_io(_sha256, destination)
             conn = self._connect()
             try:
-                conn.execute(
+                cursor = conn.execute(
                     """UPDATE derived_artifacts SET status = 'ready', artifact_path = ?, output_size = ?,
                     output_hash = ?, validation_result = 'valid', error_code = NULL, updated_at = ?,
-                    completed_at = ? WHERE id = ?""",
+                    completed_at = ? WHERE id = ? AND status = 'converting'""",
                     (
                         str(destination),
                         destination.stat().st_size,
@@ -279,6 +293,9 @@ class DerivedArtifactService:
                 conn.commit()
             finally:
                 conn.close()
+            if cursor.rowcount == 0:
+                # Source cleanup won the race; never leave a late promoted file behind.
+                run_blocking_io(destination.unlink, missing_ok=True)
         except subprocess.TimeoutExpired:
             logger.warning("AZW3 conversion timed out for history_id=%s", history_id)
             self._mark_failure(artifact_id, "timeout")
@@ -354,9 +371,15 @@ class DerivedArtifactService:
             conn = self._connect()
             try:
                 conn.execute(
-                    "UPDATE derived_artifacts SET status = ?, artifact_path = NULL, cleanup_error = ?, "
+                    "UPDATE derived_artifacts SET status = ?, artifact_path = ?, cleanup_error = ?, "
                     "updated_at = ? WHERE id = ?",
-                    ("cleanup_failed" if error else "deleted", error, now_utc_iso(), row["id"]),
+                    (
+                        "cleanup_failed" if error else "deleted",
+                        str(path) if error and path is not None else None,
+                        error,
+                        now_utc_iso(),
+                        row["id"],
+                    ),
                 )
                 conn.commit()
             finally:
