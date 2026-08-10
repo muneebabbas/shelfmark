@@ -868,6 +868,7 @@ def register_library_routes(
                     user_id=None,
                 )
             )
+            book = library_service.get_book(book_id)
         except _OPERATIONAL_ERRORS as exc:
             logger.error_trace(
                 "Library send_to_kindle resolve failed",
@@ -910,6 +911,10 @@ def register_library_routes(
                 book_id=book_id,
             )
 
+        attachment_name = _book_attachment_name(
+            book=book, book_id=book_id, download_path=download_path
+        )
+
         from shelfmark.download.outputs.email import (
             EmailOutputError,
             send_file_to_email,
@@ -920,7 +925,8 @@ def register_library_routes(
                 Path(download_path),
                 recipient,
                 label=recipient,
-                subject=Path(download_path).name,
+                subject=attachment_name,
+                attachment_name=attachment_name,
             )
         except EmailOutputError as exc:
             logger.error_trace(

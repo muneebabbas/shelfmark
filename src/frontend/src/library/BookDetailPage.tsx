@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { useSocket } from '../contexts/SocketContext';
@@ -223,6 +223,8 @@ const AvailableFiles = ({
 }) => {
   const [kindleFormat, setKindleFormat] = useState('epub');
   const [sendingKindle, setSendingKindle] = useState<number | 'latest' | null>(null);
+  const [convertedMenuHistoryId, setConvertedMenuHistoryId] = useState<number | null>(null);
+  const convertedMenuRef = useRef<HTMLDivElement | null>(null);
   const releases = groupFilesByRelease(book.files);
   const latestFiles = latestFilesByFormat(book.files);
   const kindleFiles = latestFilesByFormat(
@@ -272,6 +274,17 @@ const AvailableFiles = ({
       setSendingKindle(null);
     }
   };
+
+  useDependencyEffect(() => {
+    if (convertedMenuHistoryId === null) return undefined;
+    const dismissMenu = (event: MouseEvent) => {
+      const target = event.target;
+      if (target instanceof Node && convertedMenuRef.current?.contains(target)) return;
+      setConvertedMenuHistoryId(null);
+    };
+    window.addEventListener('mousedown', dismissMenu);
+    return () => window.removeEventListener('mousedown', dismissMenu);
+  }, [convertedMenuHistoryId]);
 
   return (
     <section className="mt-10">
@@ -479,15 +492,38 @@ const AvailableFiles = ({
                       {file.downloadable_by_me &&
                         file.format?.toLowerCase() === 'azw3' &&
                         file.derived_epub?.status === 'ready' && (
-                          <button
-                            type="button"
-                            title={convertedEpubLabel(file)}
-                            aria-label="Download converted EPUB"
-                            className="hover-action cursor-pointer rounded-md px-2 py-1 text-xs font-medium text-(--text) disabled:cursor-not-allowed disabled:opacity-40"
-                            onClick={() => handleConvertedAction(file)}
+                          <div
+                            ref={
+                              convertedMenuHistoryId === file.history_id
+                                ? convertedMenuRef
+                                : undefined
+                            }
+                            className="relative"
                           >
-                            ...
-                          </button>
+                            <button
+                              type="button"
+                              title={convertedEpubLabel(file)}
+                              aria-label="More AZW3 actions"
+                              aria-expanded={convertedMenuHistoryId === file.history_id}
+                              className="hover-action rounded-md px-2 py-1 text-xs font-medium text-(--text)"
+                              onClick={() =>
+                                setConvertedMenuHistoryId((current) =>
+                                  current === file.history_id ? null : file.history_id,
+                                )
+                              }
+                            >
+                              ...
+                            </button>
+                            {convertedMenuHistoryId === file.history_id && (
+                              <button
+                                type="button"
+                                className="hover-action absolute right-0 bottom-full z-30 mb-1 w-52 rounded-md border border-(--border-muted) bg-(--bg) px-3 py-2 text-left text-xs font-medium text-(--text) shadow-lg"
+                                onClick={() => handleConvertedAction(file)}
+                              >
+                                Download converted EPUB
+                              </button>
+                            )}
+                          </div>
                         )}
                     </div>
                   </div>
