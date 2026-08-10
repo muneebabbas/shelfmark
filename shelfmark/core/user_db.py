@@ -236,6 +236,34 @@ CREATE TABLE IF NOT EXISTS import_activity_selections (
 
 CREATE INDEX IF NOT EXISTS idx_import_activity_selections_activity
 ON import_activity_selections (import_activity_id);
+
+CREATE TABLE IF NOT EXISTS derived_artifacts (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_history_id   INTEGER NOT NULL REFERENCES download_history(id) ON DELETE CASCADE,
+    book_id             INTEGER REFERENCES books(id) ON DELETE SET NULL,
+    source_hash         TEXT NOT NULL,
+    target_format       TEXT NOT NULL,
+    converter_version   TEXT NOT NULL,
+    normalized_options  TEXT NOT NULL,
+    artifact_path       TEXT,
+    output_size         INTEGER,
+    output_hash         TEXT,
+    status              TEXT NOT NULL,
+    validation_result   TEXT,
+    error_code          TEXT,
+    cleanup_error       TEXT,
+    created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    started_at          TIMESTAMP,
+    completed_at        TIMESTAMP,
+    UNIQUE (source_history_id, source_hash, target_format, converter_version, normalized_options)
+);
+
+CREATE INDEX IF NOT EXISTS idx_derived_artifacts_identity
+ON derived_artifacts (source_history_id, source_hash, target_format, converter_version, normalized_options);
+
+CREATE INDEX IF NOT EXISTS idx_derived_artifacts_book
+ON derived_artifacts (book_id, status);
 """
 
 

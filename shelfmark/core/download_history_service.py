@@ -639,6 +639,24 @@ class DownloadHistoryService:
         finally:
             conn.close()
 
+    def get_completed_history_ids(self, *, task_id: str, file_format: str) -> list[int]:
+        """Return completed File identities for an internal post-finalization consumer."""
+        normalized_task_id = _normalize_task_id(task_id)
+        normalized_format = normalize_optional_text(file_format)
+        if normalized_format is None:
+            return []
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                """SELECT id FROM download_history WHERE task_id = ?
+                AND final_status = 'complete' AND LOWER(format) = LOWER(?)
+                AND download_path IS NOT NULL ORDER BY id""",
+                (normalized_task_id, normalized_format),
+            ).fetchall()
+            return [int(row["id"]) for row in rows]
+        finally:
+            conn.close()
+
     def list_recent(
         self,
         *,
