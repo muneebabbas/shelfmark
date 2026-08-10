@@ -47,6 +47,7 @@ from shelfmark.core.auth_modes import (
 )
 from shelfmark.core.config import config as app_config
 from shelfmark.core.cwa_user_sync import upsert_cwa_user
+from shelfmark.core.derived_artifact_service import DerivedArtifactService
 from shelfmark.core.download_history_service import DownloadHistoryService
 from shelfmark.core.external_user_linking import upsert_external_user
 from shelfmark.core.import_activity_service import ImportActivityService
@@ -157,6 +158,7 @@ _migrate_security_settings()
 _user_db_path = str(Path(os.environ.get("CONFIG_DIR", "/config")) / "users.db")
 user_db: UserDB | None = None
 download_history_service: DownloadHistoryService | None = None
+derived_artifact_service: DerivedArtifactService | None = None
 activity_view_state_service: ActivityViewStateService | None = None
 library_service: LibraryService | None = None
 import_activity_service: ImportActivityService | None = None
@@ -164,9 +166,10 @@ try:
     user_db = UserDB(_user_db_path)
     user_db.initialize()
     download_history_service = DownloadHistoryService(_user_db_path)
+    derived_artifact_service = DerivedArtifactService(_user_db_path)
     import_activity_service = ImportActivityService(_user_db_path)
     activity_view_state_service = ActivityViewStateService(_user_db_path)
-    library_service = LibraryService(_user_db_path)
+    library_service = LibraryService(_user_db_path, derived_artifact_service)
     import_module("shelfmark.config.users_settings")
     from shelfmark.core.admin_routes import register_admin_routes
     from shelfmark.core.oidc_routes import register_oidc_routes
@@ -183,6 +186,7 @@ except (sqlite3.OperationalError, OSError) as e:
     )
     user_db = None
     download_history_service = None
+    derived_artifact_service = None
     activity_view_state_service = None
     library_service = None
     import_activity_service = None
@@ -1682,6 +1686,21 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
         except _OPERATIONAL_ERRORS as exc:
             finalize_error = str(exc)
             logger.warning("Failed to finalize download history for task %s: %s", task_id, exc)
+
+    if (
+        derived_artifact_service is not None
+        and download_history_service is not None
+        and effective_final_status == QueueStatus.COMPLETE.value
+        and finalized_files
+    ):
+        try:
+            derived_artifact_service.schedule_history_ids(
+                download_history_service.get_completed_history_ids(
+                    task_id=task_id, file_format="azw3"
+                )
+            )
+        except _OPERATIONAL_ERRORS as exc:
+            logger.warning("Failed to schedule AZW3 conversion for task %s: %s", task_id, exc)
 
     activity_id = normalize_positive_int(getattr(task, "import_activity_id", None))
     if import_activity_service is not None and activity_id is not None:

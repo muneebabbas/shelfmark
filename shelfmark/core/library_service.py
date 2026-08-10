@@ -15,7 +15,7 @@ import threading
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import (
@@ -25,6 +25,9 @@ from shelfmark.core.request_helpers import (
 )
 
 logger = setup_logger(__name__)
+
+if TYPE_CHECKING:
+    from shelfmark.core.derived_artifact_service import DerivedArtifactService
 
 
 _ACTIVE_DOWNLOAD_STATUS = "active"
@@ -62,9 +65,12 @@ def _row_to_book(row: sqlite3.Row | None) -> dict[str, Any] | None:
 class LibraryService:
     """Service for library membership and book/file lookups."""
 
-    def __init__(self, db_path: str) -> None:
+    def __init__(
+        self, db_path: str, derived_artifact_service: DerivedArtifactService | None = None
+    ) -> None:
         self._db_path = db_path
         self._lock = threading.Lock()
+        self._derived_artifact_service = derived_artifact_service
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._db_path)
@@ -288,6 +294,17 @@ class LibraryService:
         with self._lock:
             conn = self._connect()
             try:
+                # Derived cleanup writes its own durable status transitions, so
+                # it must run before this service holds SQLite's write lock.
+                if self._derived_artifact_service is not None:
+                    history_ids = [
+                        int(row["id"])
+                        for row in conn.execute(
+                            "SELECT id FROM download_history WHERE book_id = ?",
+                            (normalized_book_id,),
+                        ).fetchall()
+                    ]
+                    self._derived_artifact_service.cleanup_sources(history_ids)
                 conn.execute("BEGIN IMMEDIATE")
                 if (
                     conn.execute(
@@ -771,6 +788,8 @@ class LibraryService:
                     for row in rows
                 ):
                     return False
+                if self._derived_artifact_service is not None:
+                    self._derived_artifact_service.cleanup_sources([int(row["id"]) for row in rows])
                 deleted_history_ids: list[int] = []
                 deleted_paths: list[str] = []
                 for row in rows:
