@@ -922,7 +922,7 @@ class TestSABnzbdClientFindExisting:
                         "slots": [
                             {
                                 "nzo_id": "SABnzbd_nzo_archived",
-                                "name": "The Book Release",
+                                "name": "The.Book.Release",
                                 "nzb_name": "The.Book.Release.nzb",
                                 "category": "books",
                                 "status": "Completed",
@@ -952,6 +952,188 @@ class TestSABnzbdClientFindExisting:
         assert nzo_id == "SABnzbd_nzo_archived"
         assert status.complete is True
         assert status.file_path == "/downloads/The Book Release"
+
+    def test_find_existing_does_not_reuse_ambiguous_jobs(self, monkeypatch):
+        """Retries do not select a job when multiple names match the release."""
+        config_values = {
+            "SABNZBD_URL": "http://localhost:8080",
+            "SABNZBD_API_KEY": "abc123",
+            "SABNZBD_CATEGORY": "books",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.sabnzbd.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        def mock_api_call(mode, params=None):
+            if mode == "queue":
+                return {
+                    "queue": {
+                        "slots": [
+                            {
+                                "nzo_id": "SABnzbd_nzo_one",
+                                "filename": "The.Book.Release.nzb",
+                                "cat": "books",
+                            },
+                            {
+                                "nzo_id": "SABnzbd_nzo_two",
+                                "filename": "The.Book.Release.nzb",
+                                "cat": "books",
+                            },
+                        ]
+                    }
+                }
+            return {"history": {"slots": []}}
+
+        from shelfmark.download.clients.sabnzbd import SABnzbdClient
+
+        with patch.object(SABnzbdClient, "__init__", lambda x: None):
+            client = SABnzbdClient()
+            client.url = "http://localhost:8080"
+            client.api_key = "abc123"
+            client._category = "books"
+            client._api_call = mock_api_call
+
+            result = client.find_existing(
+                "https://prowlarr.example/api/v1/indexer/1/download/opaque-token",
+                name="The Book Release",
+            )
+
+        assert result is None
+
+    def test_find_existing_does_not_match_partial_queue_name(self, monkeypatch):
+        """A shorter release title must not recover a different queued job."""
+        config_values = {
+            "SABNZBD_URL": "http://localhost:8080",
+            "SABNZBD_API_KEY": "abc123",
+            "SABNZBD_CATEGORY": "books",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.sabnzbd.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        def mock_api_call(mode, params=None):
+            if mode == "queue":
+                return {
+                    "queue": {
+                        "slots": [
+                            {
+                                "nzo_id": "SABnzbd_nzo_messiah",
+                                "filename": "Dune Messiah.nzb",
+                                "cat": "books",
+                            }
+                        ]
+                    }
+                }
+            return {"history": {"slots": []}}
+
+        from shelfmark.download.clients.sabnzbd import SABnzbdClient
+
+        with patch.object(SABnzbdClient, "__init__", lambda x: None):
+            client = SABnzbdClient()
+            client.url = "http://localhost:8080"
+            client.api_key = "abc123"
+            client._category = "books"
+            client._api_call = mock_api_call
+
+            result = client.find_existing(
+                "https://prowlarr.example/api/v1/indexer/1/download/opaque-token",
+                name="Dune",
+            )
+
+        assert result is None
+
+    def test_find_existing_uses_release_name_when_url_has_no_filename(self, monkeypatch):
+        """A release title can recover an archived job from a trailing-slash URL."""
+        config_values = {
+            "SABNZBD_URL": "http://localhost:8080",
+            "SABNZBD_API_KEY": "abc123",
+            "SABNZBD_CATEGORY": "books",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.sabnzbd.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        def mock_api_call(mode, params=None):
+            if mode == "queue":
+                return {"queue": {"slots": []}}
+            if mode == "history" and params and params.get("archive") == 1:
+                return {
+                    "history": {
+                        "slots": [
+                            {
+                                "nzo_id": "SABnzbd_nzo_archived",
+                                "name": "The Book Release",
+                                "category": "books",
+                                "status": "Completed",
+                                "storage": "/downloads/The Book Release",
+                            }
+                        ]
+                    }
+                }
+            return {"history": {"slots": []}}
+
+        from shelfmark.download.clients.sabnzbd import SABnzbdClient
+
+        with patch.object(SABnzbdClient, "__init__", lambda x: None):
+            client = SABnzbdClient()
+            client.url = "http://localhost:8080"
+            client.api_key = "abc123"
+            client._category = "books"
+            client._api_call = mock_api_call
+
+            result = client.find_existing(
+                "https://prowlarr.example/api/v1/indexer/1/download/",
+                name="The Book Release",
+            )
+
+        assert result is not None
+        assert result[0] == "SABnzbd_nzo_archived"
+
+    def test_find_existing_does_not_use_url_token_when_release_name_is_available(self, monkeypatch):
+        """The Prowlarr URL token cannot override the authoritative release name."""
+        config_values = {
+            "SABNZBD_URL": "http://localhost:8080",
+            "SABNZBD_API_KEY": "abc123",
+            "SABNZBD_CATEGORY": "books",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.sabnzbd.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        def mock_api_call(mode, params=None):
+            if mode == "queue":
+                return {
+                    "queue": {
+                        "slots": [
+                            {
+                                "nzo_id": "SABnzbd_nzo_foo",
+                                "filename": "foo.nzb",
+                                "cat": "books",
+                            }
+                        ]
+                    }
+                }
+            return {"history": {"slots": []}}
+
+        from shelfmark.download.clients.sabnzbd import SABnzbdClient
+
+        with patch.object(SABnzbdClient, "__init__", lambda x: None):
+            client = SABnzbdClient()
+            client.url = "http://localhost:8080"
+            client.api_key = "abc123"
+            client._category = "books"
+            client._api_call = mock_api_call
+
+            result = client.find_existing(
+                "https://prowlarr.example/api/v1/indexer/1/download/foo",
+                name="The Book Release",
+            )
+
+        assert result is None
 
     def test_find_existing_ignores_different_category(self, monkeypatch):
         """Test that find_existing ignores downloads in different categories.
