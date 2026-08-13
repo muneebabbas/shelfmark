@@ -6,6 +6,7 @@ export interface LibraryFile {
   size: string | null;
   indexer_display_name: string | null;
   protocol: string | null;
+  is_manual_upload: boolean;
   downloaded_at: string | null;
   download_path: string | null;
   torrent_path: string | null;
@@ -61,6 +62,20 @@ export interface BookDetailResponse {
   in_my_library: boolean;
   files: LibraryFile[];
   in_flight: InFlightDownload[];
+  manual_upload?: {
+    enabled_formats: string[];
+    max_total_bytes: number;
+    max_file_count: number;
+  };
+}
+
+export interface ManualImportStatus {
+  activity_id: number;
+  task_id: string;
+  book_id: number;
+  state: 'uploading' | 'importing' | 'completed' | 'failed';
+  file_count: number;
+  message?: string;
 }
 
 export interface LibraryBookSummary {

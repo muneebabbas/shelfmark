@@ -125,6 +125,8 @@ def _on_save_advanced(values: dict[str, Any]) -> dict[str, Any]:
 logger = setup_logger(__name__)
 _SMTP_PORT_MAX = 65535
 _EMAIL_ATTACHMENT_LIMIT_MB_MAX = 600
+_MANUAL_UPLOAD_MAX_TOTAL_BYTES_DEFAULT = 1024 * 1024 * 1024
+_MANUAL_UPLOAD_MAX_TOTAL_BYTES_MAX = 10 * 1024 * 1024 * 1024
 
 # Log bootstrap configuration values at DEBUG level
 logger.debug("Bootstrap configuration:")
@@ -1080,6 +1082,22 @@ def advanced_settings() -> list[SettingsField]:
             default=_DOWNLOAD_CLIENT_COMPLETED_PATH_TIMEOUT_DEFAULT,
             min_value=0,
             max_value=_DOWNLOAD_CLIENT_COMPLETED_PATH_TIMEOUT_MAX,
+        ),
+        NumberField(
+            key="MANUAL_UPLOAD_MAX_TOTAL_BYTES",
+            label="Manual Upload Maximum Total Bytes",
+            description="Maximum aggregate size of one administrator manual Book upload.",
+            default=_MANUAL_UPLOAD_MAX_TOTAL_BYTES_DEFAULT,
+            min_value=1,
+            max_value=_MANUAL_UPLOAD_MAX_TOTAL_BYTES_MAX,
+        ),
+        NumberField(
+            key="MANUAL_UPLOAD_MAX_FILE_COUNT",
+            label="Manual Upload Maximum File Count",
+            description="Maximum number of files in one administrator manual Book upload.",
+            default=50,
+            min_value=1,
+            max_value=500,
         ),
         TableField(
             key="PROWLARR_REMOTE_PATH_MAPPINGS",

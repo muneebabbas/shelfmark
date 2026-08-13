@@ -33,6 +33,7 @@ from shelfmark.config.env import (
     RELEASE_VERSION,
     SESSION_COOKIE_NAME,
     SESSION_COOKIE_SECURE_ENV,
+    TMP_DIR,
     _is_config_dir_writable,
     string_to_bool,
 )
@@ -502,6 +503,8 @@ def _resolve_metadata_book_for_library(
 if user_db is not None:
     try:
         from shelfmark.core.activity_routes import register_activity_routes
+        from shelfmark.core.manual_import_routes import register_manual_import_routes
+        from shelfmark.core.manual_import_service import ManualImportService
         from shelfmark.core.request_routes import register_request_routes
 
         register_request_routes(
@@ -523,7 +526,11 @@ if user_db is not None:
                 emit_request_updates=_emit_request_updates,
                 ws_manager=ws_manager,
             )
-        if library_service is not None and download_history_service is not None:
+        if (
+            library_service is not None
+            and download_history_service is not None
+            and import_activity_service is not None
+        ):
             register_library_routes(
                 app,
                 user_db,
@@ -536,6 +543,47 @@ if user_db is not None:
                 import_activity_service=import_activity_service,
                 storage_root=Path(str(app_config.get("DESTINATION", "/books"))),
                 hardlink_torrents=bool(app_config.get("HARDLINK_TORRENTS", False)),
+            )
+            def _manual_enabled_formats() -> set[str]:
+                configured = app_config.get("SUPPORTED_FORMATS", [])
+                if not isinstance(configured, list):
+                    return set()
+                return {
+                    str(value).strip().lower()
+                    for value in configured
+                    if str(value).strip()
+                }
+
+            def _manual_limits() -> tuple[int, int]:
+                try:
+                    total = int(
+                        str(app_config.get("MANUAL_UPLOAD_MAX_TOTAL_BYTES", 1024 * 1024 * 1024))
+                    )
+                    count = int(str(app_config.get("MANUAL_UPLOAD_MAX_FILE_COUNT", 50)))
+                except (TypeError, ValueError):
+                    return 1024 * 1024 * 1024, 50
+                return max(1, total), max(1, count)
+
+            manual_import_service = ManualImportService(
+                imports=import_activity_service,
+                history=download_history_service,
+                library=library_service,
+                storage_root=Path(str(app_config.get("DESTINATION", "/books"))),
+                tmp_root=TMP_DIR,
+                enabled_formats=_manual_enabled_formats,
+                limits=_manual_limits,
+                start_background=socketio.start_background_task,
+                ws_manager=ws_manager,
+                emit_availability=lambda book_id, task_id: _emit_library_book_availability(
+                    book_id=book_id, task_id=task_id
+                ),
+            )
+            manual_import_service.reconcile_interrupted()
+            register_manual_import_routes(
+                app,
+                service=manual_import_service,
+                library_service=library_service,
+                resolve_auth_mode=_resolve_auth_mode_for_routes,
             )
     except _IMPORT_OPERATIONAL_ERRORS as e:
         logger.warning("Failed to register request routes: %s", e)
