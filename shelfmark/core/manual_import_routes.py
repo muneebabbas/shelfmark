@@ -48,7 +48,7 @@ def register_manual_import_routes(
             )
         except ManualImportError as exc:
             return jsonify({"error": exc.public_message}), 400
-        except (OSError, RuntimeError, TypeError, ValueError):
+        except OSError, RuntimeError, TypeError, ValueError:
             return jsonify({"error": "Internal server error"}), 500
         return jsonify(accepted), 202
 
@@ -59,7 +59,7 @@ def register_manual_import_routes(
             return jsonify({"error": "Admin required"}), 403
         try:
             status = service.status(activity_id=activity_id, actor_id=actor)
-        except (OSError, RuntimeError, TypeError, ValueError):
+        except OSError, RuntimeError, TypeError, ValueError:
             return jsonify({"error": "Internal server error"}), 500
         if status is None:
             return jsonify({"error": "Manual import not found"}), 404

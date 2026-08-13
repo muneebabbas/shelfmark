@@ -631,8 +631,10 @@ def register_library_routes(
                 max_total_bytes = max(
                     1, int(str(app_config.get("MANUAL_UPLOAD_MAX_TOTAL_BYTES", 1024 * 1024 * 1024)))
                 )
-                max_file_count = max(1, int(str(app_config.get("MANUAL_UPLOAD_MAX_FILE_COUNT", 50))))
-            except (TypeError, ValueError):
+                max_file_count = max(
+                    1, int(str(app_config.get("MANUAL_UPLOAD_MAX_FILE_COUNT", 50)))
+                )
+            except TypeError, ValueError:
                 max_total_bytes, max_file_count = 1024 * 1024 * 1024, 50
             detail["manual_upload"] = {
                 "enabled_formats": enabled_formats,
@@ -1144,7 +1146,9 @@ def register_library_routes(
                     action=action, status_code=404, error="Source release not found"
                 )
             if original["source_release"]["source"] == "manual":
-                return _error_response(action=action, status_code=404, error="Source release not found")
+                return _error_response(
+                    action=action, status_code=404, error="Source release not found"
+                )
             source_root = normalize_optional_text(original["source_release"].get("source_root"))
             if source_root is None:
                 return _error_response(

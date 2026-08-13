@@ -266,7 +266,9 @@ class ImportActivityService:
         """Return an activity by its durable identity."""
         conn = self._connect()
         try:
-            row = conn.execute("SELECT id FROM import_activities WHERE id = ?", (activity_id,)).fetchone()
+            row = conn.execute(
+                "SELECT id FROM import_activities WHERE id = ?", (activity_id,)
+            ).fetchone()
             return self._activity(conn, row["id"]) if row is not None else None
         finally:
             conn.close()

@@ -70,7 +70,12 @@ class ManualImportService:
         }
 
     def accept(
-        self, *, book_id: int, actor_id: int, actor_username: str | None, files: Iterable[FileStorage]
+        self,
+        *,
+        book_id: int,
+        actor_id: int,
+        actor_username: str | None,
+        files: Iterable[FileStorage],
     ) -> dict[str, Any]:
         """Stream a complete multipart submission, then schedule its import."""
         uploads = list(files)
@@ -129,7 +134,10 @@ class ManualImportService:
             activity = self._imports.plan_import(
                 activity_id=activity["id"],
                 storage_root=self._storage_root,
-                selections=[{"source_member_id": member["id"], "evidence": {"match": "manual"}} for member in members],
+                selections=[
+                    {"source_member_id": member["id"], "evidence": {"match": "manual"}}
+                    for member in members
+                ],
             )
             self._history.record_download(
                 task_id=task_id,
@@ -169,7 +177,11 @@ class ManualImportService:
             "activity_id": activity["id"],
             "task_id": activity["task_id"],
             "book_id": activity["book_id"],
-            "state": "completed" if state == "completed" else "failed" if state == "failed" else "importing",
+            "state": "completed"
+            if state == "completed"
+            else "failed"
+            if state == "failed"
+            else "importing",
             "file_count": len(activity["selections"]),
             **({"message": "Manual import failed"} if state == "failed" else {}),
         }
@@ -180,9 +192,13 @@ class ManualImportService:
             self._cleanup_activity(activity)
             try:
                 self._history.finalize_download_files(
-                    task_id=activity["task_id"], final_status="error", status_message="Manual import interrupted"
+                    task_id=activity["task_id"],
+                    final_status="error",
+                    status_message="Manual import interrupted",
                 )
-                self._imports.fail(activity_id=activity["id"], error_context={"message": "interrupted"})
+                self._imports.fail(
+                    activity_id=activity["id"], error_context={"message": "interrupted"}
+                )
             except (OSError, RuntimeError, TypeError, ValueError) as exc:
                 logger.warning("Failed to reconcile manual import %s: %s", activity["id"], exc)
 
@@ -231,10 +247,17 @@ class ManualImportService:
         if error:
             raise RuntimeError(error)
 
-    def _run(self, activity: dict[str, Any], actor_id: int, staged: list[tuple[str, str, int, Path]]) -> None:
+    def _run(
+        self, activity: dict[str, Any], actor_id: int, staged: list[tuple[str, str, int, Path]]
+    ) -> None:
         try:
             paths, error, _ = transfer_selected_source_members(
-                [(path, Path(selection["planned_output_path"])) for (_, _, _, path), selection in zip(staged, activity["selections"], strict=True)],
+                [
+                    (path, Path(selection["planned_output_path"]))
+                    for (_, _, _, path), selection in zip(
+                        staged, activity["selections"], strict=True
+                    )
+                ],
                 use_hardlink=False,
                 exact_copy=True,
             )
@@ -243,7 +266,11 @@ class ManualImportService:
                 task_id=activity["task_id"],
                 final_status="complete",
                 file_rows=[
-                    {"download_path": str(path), "format": Path(name).suffix.lstrip(".").lower(), "size": str(size)}
+                    {
+                        "download_path": str(path),
+                        "format": Path(name).suffix.lstrip(".").lower(),
+                        "size": str(size),
+                    }
                     for (_, name, size, _), path in zip(staged, paths, strict=True)
                 ],
             )
@@ -256,9 +283,13 @@ class ManualImportService:
             self._cleanup_activity(activity)
             try:
                 self._history.finalize_download_files(
-                    task_id=activity["task_id"], final_status="error", status_message="Manual import failed"
+                    task_id=activity["task_id"],
+                    final_status="error",
+                    status_message="Manual import failed",
                 )
-                self._imports.fail(activity_id=activity["id"], error_context={"message": "import failed"})
+                self._imports.fail(
+                    activity_id=activity["id"], error_context={"message": "import failed"}
+                )
             except (OSError, RuntimeError, TypeError, ValueError) as cleanup_exc:
                 logger.warning("Manual import %s cleanup failed: %s", activity["id"], cleanup_exc)
             self._emit(activity, actor_id, "failed", len(staged), message="Manual import failed")
@@ -274,8 +305,27 @@ class ManualImportService:
         if isinstance(staging_dir, str):
             shutil.rmtree(staging_dir, ignore_errors=True)
 
-    def _emit(self, activity: dict[str, Any], actor_id: int, state: str, file_count: int, *, message: str | None = None) -> None:
-        payload: dict[str, Any] = {"activity_id": activity["id"], "task_id": activity["task_id"], "book_id": activity["book_id"], "state": state, "file_count": file_count}
+    def _emit(
+        self,
+        activity: dict[str, Any],
+        actor_id: int,
+        state: str,
+        file_count: int,
+        *,
+        message: str | None = None,
+    ) -> None:
+        payload: dict[str, Any] = {
+            "activity_id": activity["id"],
+            "task_id": activity["task_id"],
+            "book_id": activity["book_id"],
+            "state": state,
+            "file_count": file_count,
+        }
         if message:
             payload["message"] = message
-        emit_ws_event(self._ws_manager, event_name="manual_import_update", payload=payload, room=f"user_{actor_id}")
+        emit_ws_event(
+            self._ws_manager,
+            event_name="manual_import_update",
+            payload=payload,
+            room=f"user_{actor_id}",
+        )

@@ -95,7 +95,10 @@ def test_manual_import_rejects_whole_invalid_submission(services, files, message
 def test_manual_import_failure_removes_partial_output_and_marks_audit_failed(services, monkeypatch):
     service, users, admin, book_id, started = services
     accepted = service.accept(
-        book_id=book_id, actor_id=admin["id"], actor_username="admin", files=[_upload("One.epub", b"one")]
+        book_id=book_id,
+        actor_id=admin["id"],
+        actor_username="admin",
+        files=[_upload("One.epub", b"one")],
     )
     monkeypatch.setattr(
         "shelfmark.core.manual_import_service.transfer_selected_source_members",
@@ -103,7 +106,10 @@ def test_manual_import_failure_removes_partial_output_and_marks_audit_failed(ser
     )
     fn, args = started.pop()
     fn(*args)
-    assert service.status(activity_id=accepted["activity_id"], actor_id=admin["id"])["state"] == "failed"
+    assert (
+        service.status(activity_id=accepted["activity_id"], actor_id=admin["id"])["state"]
+        == "failed"
+    )
     assert LibraryService(users._db_path).get_files_on_disk(book_id) == []
 
 

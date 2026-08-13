@@ -544,15 +544,12 @@ if user_db is not None:
                 storage_root=Path(str(app_config.get("DESTINATION", "/books"))),
                 hardlink_torrents=bool(app_config.get("HARDLINK_TORRENTS", False)),
             )
+
             def _manual_enabled_formats() -> set[str]:
                 configured = app_config.get("SUPPORTED_FORMATS", [])
                 if not isinstance(configured, list):
                     return set()
-                return {
-                    str(value).strip().lower()
-                    for value in configured
-                    if str(value).strip()
-                }
+                return {str(value).strip().lower() for value in configured if str(value).strip()}
 
             def _manual_limits() -> tuple[int, int]:
                 try:
@@ -560,7 +557,7 @@ if user_db is not None:
                         str(app_config.get("MANUAL_UPLOAD_MAX_TOTAL_BYTES", 1024 * 1024 * 1024))
                     )
                     count = int(str(app_config.get("MANUAL_UPLOAD_MAX_FILE_COUNT", 50)))
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     return 1024 * 1024 * 1024, 50
                 return max(1, total), max(1, count)
 
