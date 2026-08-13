@@ -872,6 +872,7 @@ class TestProwlarrHandlerExistingDownload:
             assert mock_client.find_existing.call_count == 1
             called_url = mock_client.find_existing.call_args.args[0]
             assert called_url == "https://prowlarr.example.com/api/v1/indexer/1/download/456"
+            assert mock_client.find_existing.call_args.kwargs["name"] == "Test Release"
 
     def test_uses_existing_complete_download(self):
         """Test that handler uses existing complete download."""

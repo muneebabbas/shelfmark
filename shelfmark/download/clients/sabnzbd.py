@@ -607,16 +607,17 @@ class SABnzbdClient(DownloadClient):
                     filename = filename[: -len(ext)]
                     break
 
-            if not filename:
-                return None
-
             # Use provided category or fall back to configured default
             search_category = category or self._category
             requested_names = {
                 _normalize_job_name(value)
-                for value in (filename, name or "")
+                for value in ((name,) if name else (filename,))
                 if _normalize_job_name(value)
             }
+            if not requested_names:
+                return None
+            candidates = []
+            candidate_ids: set[str] = set()
 
             # Search queue (SABnzbd uses "cat" field for category in queue)
             queue_result = self._api_call("queue")
@@ -625,17 +626,14 @@ class SABnzbdClient(DownloadClient):
                 if slot.get("cat", "") != search_category:
                     continue
                 slot_name = _normalize_job_name(slot.get("filename", ""))
-                if any(requested_name in slot_name for requested_name in requested_names):
-                    nzo_id = slot.get("nzo_id")
-                    if nzo_id:
-                        status = self.get_status(nzo_id)
-                        logger.debug("Found existing NZB in SABnzbd queue: %s", nzo_id)
-                        return (nzo_id, status)
+                if slot_name in requested_names:
+                    nzo_id = str(slot.get("nzo_id") or "")
+                    if nzo_id and nzo_id not in candidate_ids:
+                        candidates.append(slot)
+                        candidate_ids.add(nzo_id)
 
             # Search current and archived history. The SAB ID is opaque, so a
             # retry must rediscover it from the release/job name.
-            candidates = []
-            candidate_ids: set[str] = set()
             for history_params in ({"limit": 100}, {"limit": 100, "archive": 1}):
                 history_result = self._api_call("history", history_params)
                 history = history_result.get("history", {})
