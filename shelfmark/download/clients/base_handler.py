@@ -758,14 +758,12 @@ class ExternalClientHandler(DownloadHandler, ABC):
             # Check if this download already exists in the client
             status_callback("resolving", f"Checking {client.name}")
             category = self._get_category_for_task(client, task)
+            existing_kwargs = {"category": category}
             if request.expected_hash:
-                existing = client.find_existing(
-                    request.url,
-                    category=category,
-                    expected_hash=request.expected_hash,
-                )
-            else:
-                existing = client.find_existing(request.url, category=category)
+                existing_kwargs["expected_hash"] = request.expected_hash
+            if client.name == "sabnzbd":
+                existing_kwargs["name"] = request.release_name
+            existing = client.find_existing(request.url, **existing_kwargs)
 
             if existing:
                 download_id, existing_status = existing
