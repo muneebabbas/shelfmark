@@ -418,6 +418,7 @@ class TransmissionClient(DownloadClient):
         url: str,
         category: str | None = None,
         expected_hash: str | None = None,
+        name: str | None = None,
     ) -> tuple[str, DownloadStatus] | None:
         """Check if a torrent for this URL already exists in Transmission."""
         try:

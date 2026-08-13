@@ -450,6 +450,7 @@ class DelugeClient(DownloadClient):
         url: str,
         category: str | None = None,
         expected_hash: str | None = None,
+        name: str | None = None,
     ) -> tuple[str, DownloadStatus] | None:
         """Find an existing Deluge torrent matching a release URL."""
         try:

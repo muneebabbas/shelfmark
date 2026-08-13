@@ -901,6 +901,58 @@ class TestSABnzbdClientFindExisting:
 
             assert result is None
 
+    def test_find_existing_matches_archived_job_by_release_name(self, monkeypatch):
+        """Retry can recover a completed job when the Prowlarr URL is opaque."""
+        config_values = {
+            "SABNZBD_URL": "http://localhost:8080",
+            "SABNZBD_API_KEY": "abc123",
+            "SABNZBD_CATEGORY": "books",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.sabnzbd.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        def mock_api_call(mode, params=None):
+            if mode == "queue":
+                return {"queue": {"slots": []}}
+            if mode == "history" and params and params.get("archive") == 1:
+                return {
+                    "history": {
+                        "slots": [
+                            {
+                                "nzo_id": "SABnzbd_nzo_archived",
+                                "name": "The Book Release",
+                                "nzb_name": "The.Book.Release.nzb",
+                                "category": "books",
+                                "status": "Completed",
+                                "storage": "/downloads/The Book Release",
+                            }
+                        ]
+                    }
+                }
+            return {"history": {"slots": []}}
+
+        from shelfmark.download.clients.sabnzbd import SABnzbdClient
+
+        with patch.object(SABnzbdClient, "__init__", lambda x: None):
+            client = SABnzbdClient()
+            client.url = "http://localhost:8080"
+            client.api_key = "abc123"
+            client._category = "books"
+            client._api_call = mock_api_call
+
+            result = client.find_existing(
+                "https://prowlarr.example/api/v1/indexer/1/download/opaque-token",
+                name="The Book Release",
+            )
+
+        assert result is not None
+        nzo_id, status = result
+        assert nzo_id == "SABnzbd_nzo_archived"
+        assert status.complete is True
+        assert status.file_path == "/downloads/The Book Release"
+
     def test_find_existing_ignores_different_category(self, monkeypatch):
         """Test that find_existing ignores downloads in different categories.
 

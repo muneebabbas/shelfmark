@@ -3,6 +3,7 @@
 Uses SABnzbd's REST API directly via requests (no external dependency).
 """
 
+import re
 from typing import Any
 from urllib.parse import urlparse
 
@@ -20,6 +21,14 @@ from shelfmark.download.clients._coercion import config_text, normalize_http_con
 from shelfmark.download.network import get_ssl_verify
 
 logger = setup_logger(__name__)
+
+
+def _normalize_job_name(value: object) -> str:
+    """Normalize release names for matching across SABnzbd naming rules."""
+    normalized = str(value or "").casefold()
+    normalized = re.sub(r"\.nzb(?:\.gz)?$", "", normalized)
+    return re.sub(r"[^a-z0-9]+", "", normalized)
+
 
 _ETA_PART_COUNT = 3
 _SPEED_PARTS_MIN = 2
@@ -438,13 +447,16 @@ class SABnzbdClient(DownloadClient):
                         eta=_parse_eta(slot.get("timeleft", "")),
                     )
 
-            # Not in queue, check history
-            history_result = self._api_call("history", {"limit": 100})
-            history = history_result.get("history", {})
-            history_slots = history.get("slots", [])
+            # Not in queue, check normal and archived history. Archived jobs
+            # retain their nzo_id and storage path, which is useful in copy mode.
+            for history_params in ({"limit": 100}, {"limit": 100, "archive": 1}):
+                history_result = self._api_call("history", history_params)
+                history = history_result.get("history", {})
+                history_slots = history.get("slots", [])
 
-            for slot in history_slots:
-                if slot.get("nzo_id") == download_id:
+                for slot in history_slots:
+                    if slot.get("nzo_id") != download_id:
+                        continue
                     status_text = slot.get("status", "").upper()
                     storage = slot.get("storage", "")
                     if storage is None:
@@ -478,9 +490,6 @@ class SABnzbdClient(DownloadClient):
                             complete=True,
                             file_path=resolved_storage,
                         )
-                    # Post-processing states: Queued, QuickCheck, Verifying,
-                    # Repairing, Fetching, Extracting, Moving, Running
-                    # Keep polling - not yet complete
                     return DownloadStatus(
                         progress=100,
                         state="processing",
@@ -565,6 +574,7 @@ class SABnzbdClient(DownloadClient):
         url: str,
         category: str | None = None,
         expected_hash: str | None = None,
+        name: str | None = None,
     ) -> tuple[str, DownloadStatus] | None:
         """Check if an NZB for this URL already exists in SABnzbd.
 
@@ -602,6 +612,11 @@ class SABnzbdClient(DownloadClient):
 
             # Use provided category or fall back to configured default
             search_category = category or self._category
+            requested_names = {
+                _normalize_job_name(value)
+                for value in (filename, name or "")
+                if _normalize_job_name(value)
+            }
 
             # Search queue (SABnzbd uses "cat" field for category in queue)
             queue_result = self._api_call("queue")
@@ -609,27 +624,43 @@ class SABnzbdClient(DownloadClient):
             for slot in queue.get("slots", []):
                 if slot.get("cat", "") != search_category:
                     continue
-                slot_name = slot.get("filename", "")
-                if filename.lower() in slot_name.lower():
+                slot_name = _normalize_job_name(slot.get("filename", ""))
+                if any(requested_name in slot_name for requested_name in requested_names):
                     nzo_id = slot.get("nzo_id")
                     if nzo_id:
                         status = self.get_status(nzo_id)
                         logger.debug("Found existing NZB in SABnzbd queue: %s", nzo_id)
                         return (nzo_id, status)
 
-            # Search history (SABnzbd uses "category" field in history)
-            history_result = self._api_call("history", {"limit": 100})
-            history = history_result.get("history", {})
-            for slot in history.get("slots", []):
-                if slot.get("category", "") != search_category:
-                    continue
-                slot_name = slot.get("name", "")
-                if filename.lower() in slot_name.lower():
-                    nzo_id = slot.get("nzo_id")
-                    if nzo_id:
-                        status = self.get_status(nzo_id)
-                        logger.debug("Found existing NZB in SABnzbd history: %s", nzo_id)
-                        return (nzo_id, status)
+            # Search current and archived history. The SAB ID is opaque, so a
+            # retry must rediscover it from the release/job name.
+            candidates = []
+            candidate_ids: set[str] = set()
+            for history_params in ({"limit": 100}, {"limit": 100, "archive": 1}):
+                history_result = self._api_call("history", history_params)
+                history = history_result.get("history", {})
+                for slot in history.get("slots", []):
+                    if slot.get("category", "") != search_category:
+                        continue
+                    slot_names = {
+                        _normalize_job_name(slot.get("name", "")),
+                        _normalize_job_name(slot.get("nzb_name", "")),
+                    }
+                    nzo_id = str(slot.get("nzo_id") or "")
+                    if slot_names & requested_names and nzo_id not in candidate_ids:
+                        candidates.append(slot)
+                        candidate_ids.add(nzo_id)
+
+            if len(candidates) == 1:
+                nzo_id = candidates[0].get("nzo_id")
+                if nzo_id:
+                    status = self.get_status(nzo_id)
+                    logger.debug("Found existing NZB in SABnzbd history: %s", nzo_id)
+                    return (nzo_id, status)
+            if len(candidates) > 1:
+                logger.warning(
+                    "SABnzbd existing-download match is ambiguous for '%s'", name or filename
+                )
 
         except _SABNZBD_CLIENT_ERRORS as e:
             logger.debug("Error checking for existing NZB: %s", e)
