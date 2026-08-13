@@ -43,6 +43,19 @@ docker manifest inspect ghcr.io/muneebabbas/shelfmark-lite:dev
 This workflow publishes to GitHub Container Registry (GHCR), not Docker Hub.
 The `dev` tag is mutable and is intended for the latest non-release build.
 
+To publish the latest `main` build of the lite image to Docker Hub, authenticate
+with Docker Hub first, then run this single command from the repository root:
+
+```bash
+docker buildx build --platform linux/amd64,linux/arm64 --target shelfmark-lite --tag muneebabbas/shelfmark-lite:dev --push .
+```
+
+Verify it with:
+
+```bash
+docker manifest inspect muneebabbas/shelfmark-lite:dev
+```
+
 For a release, update `main`, create an annotated version tag, and push it:
 
 ```bash
