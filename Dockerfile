@@ -75,6 +75,8 @@ RUN apt-get update && \
     dumb-init \
     # For debug
     zip iputils-ping \
+    # Required by Calibre's PyQt image handling during MOBI/AZW3 conversion
+    libegl1 libopengl0 libfontconfig1 libfreetype6 libglx0 libxkbcommon0 libxcb-cursor0 \
     # Extract the upstream Calibre binary bundle below.
     xz-utils \
     # For user switching
