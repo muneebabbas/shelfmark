@@ -42,6 +42,12 @@ A single Import Activity may produce **multiple Files**. Files belonging to the 
 
 A user's library surfaces a File via the **`user_downloads(user_id, history_id)` link table** — the load-bearing column for file visibility in a user's library. Multiple users can link the same `download_history` row. Library file serving gates on `user_library` Book-membership (any user with the Book in their library can download any of its files), not on `download_history.user_id`. The `download_history.user_id` column stays as an audit field for "the auth identity who triggered the download" — not exposed via the library API.
 
+## Reading
+
+**Reading Progress** is one user's current resume state for one original File. It belongs to the User and File rather than the Book or a derived representation, so different Files and formats keep independent progress; a companion EPUB is only the representation used to read an original File.
+
+Reading Progress is current state rather than an audit history. It is preserved through temporary representation failures, removed when the readable File artifact is destructively detached or retired, and never inherited by a replacement File.
+
 ## Release Deletion
 
 A **Release Deletion** is an administrator-only, Import-Activity-atomic destruction of every File in an Import Activity (all `download_history` rows sharing a `task_id`). It deletes the immutable library artifacts, removes every `user_downloads` link, and clears the retained history rows' `book_id` and `download_path`. The history rows remain as audit records, but their Files are unavailable and the Import Activity is no longer associated with the Book for any user. Superseding an activity during correction uses the same deletion semantics. It does not destroy the retained Source Release; a later selection may create and link a new Import Activity for that Book.

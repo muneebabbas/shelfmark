@@ -19,6 +19,8 @@ import {
   deleteLibraryRelease,
   getLibraryReleaseReview,
   replaceLibraryRelease,
+  getManualImportStatus,
+  uploadManualLibraryFiles,
 } from '../services/api';
 import type { Book, RequestRecord } from '../types';
 import { withBasePath } from '../utils/basePath';
@@ -30,6 +32,7 @@ import {
   type LibraryBookAvailabilityEvent,
   type LibraryPurgePreview,
   type LibraryFile,
+  type ManualImportStatus,
   type ReleaseReviewResponse,
 } from './types';
 import { useNeedsReviewBooks } from './useNeedsReviewBooks';
@@ -118,6 +121,176 @@ const SendingSpinner = () => (
     <path strokeLinecap="round" d="M21 12a9 9 0 0 0-9-9" />
   </svg>
 );
+
+const ManualUploadDialog = ({
+  bookId,
+  capability,
+  socket,
+  onClose,
+  onComplete,
+}: {
+  bookId: number;
+  capability: NonNullable<BookDetailResponse['manual_upload']>;
+  socket: ReturnType<typeof useSocket>['socket'];
+  onClose: () => void;
+  onComplete: (fileCount: number) => Promise<void>;
+}) => {
+  const [files, setFiles] = useState<File[]>([]);
+  const [status, setStatus] = useState<ManualImportStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const addFiles = (next: FileList | File[]) => {
+    const additions = Array.from(next);
+    const all = [...files, ...additions];
+    const names = new Set<string>();
+    const invalid = all.find((file) => {
+      const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
+      const duplicate = names.has(file.name.toLowerCase());
+      names.add(file.name.toLowerCase());
+      return duplicate || !capability.enabled_formats.includes(extension);
+    });
+    if (invalid || all.length > capability.max_file_count) {
+      setError(
+        invalid ? `${invalid.name} is not an enabled ebook format` : 'Too many files selected',
+      );
+      return;
+    }
+    const total = all.reduce((sum, file) => sum + file.size, 0);
+    if (total > capability.max_total_bytes) {
+      setError('Total upload size exceeds the configured limit');
+      return;
+    }
+    setError(null);
+    setFiles(all);
+  };
+  const submit = async () => {
+    try {
+      setError(null);
+      setStatus({
+        activity_id: 0,
+        task_id: '',
+        book_id: bookId,
+        state: 'uploading',
+        file_count: files.length,
+      });
+      const accepted = await uploadManualLibraryFiles(bookId, files);
+      setStatus(accepted);
+    } catch (caught) {
+      setStatus(null);
+      setError(caught instanceof Error ? caught.message : 'Upload failed');
+    }
+  };
+  useDependencyEffect(() => {
+    if (!status || status.activity_id < 1) return undefined;
+    const update = (event: ManualImportStatus) => {
+      if (event.activity_id !== status.activity_id) return;
+      setStatus(event);
+      if (event.state === 'completed') void onComplete(event.file_count);
+    };
+    socket?.on('manual_import_update', update);
+    const recover = () =>
+      void getManualImportStatus(status.activity_id)
+        .then(update)
+        .catch(() => undefined);
+    socket?.on('connect', recover);
+    recover();
+    return () => {
+      socket?.off('manual_import_update', update);
+      socket?.off('connect', recover);
+    };
+  }, [onComplete, socket, status]);
+  const uploading = status?.state === 'uploading';
+  const importing = status?.state === 'importing';
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="manual-upload-title"
+    >
+      <div className="w-full max-w-2xl rounded-xl border border-(--border-muted) bg-(--bg-soft) p-7 shadow-2xl ring-1 ring-black/10">
+        <h2 id="manual-upload-title" className="text-lg font-semibold text-(--text)">
+          Upload files
+        </h2>
+        {!status && (
+          <>
+            <div
+              className="mt-4 rounded-lg border border-dashed border-(--border-muted) p-5 text-center text-sm text-gray-600 dark:text-gray-300"
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                addFiles(event.dataTransfer.files);
+              }}
+            >
+              <label className="cursor-pointer">
+                Drop ebook files here or choose files
+                <input
+                  className="sr-only"
+                  type="file"
+                  multiple
+                  onChange={(event) => addFiles(event.target.files ?? [])}
+                />
+              </label>
+            </div>
+            <ul className="mt-3 space-y-2 text-sm">
+              {files.map((file, index) => (
+                <li key={file.name} className="flex gap-2">
+                  <span className="min-w-0 flex-1 truncate">
+                    {file.name} ({formatFileSize(String(file.size))})
+                  </span>
+                  <button
+                    type="button"
+                    className="hover-action rounded px-1 text-rose-700"
+                    onClick={() => setFiles(files.filter((_, current) => current !== index))}
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        {uploading && (
+          <p className="mt-4 text-sm text-gray-600 dark:text-gray-300">
+            Uploading {status.file_count} file{status.file_count === 1 ? '' : 's'}...
+          </p>
+        )}
+        {importing && (
+          <p className="mt-4 text-sm text-gray-600 dark:text-gray-300">
+            Importing {status.file_count} file{status.file_count === 1 ? '' : 's'}...
+          </p>
+        )}
+        {status?.state === 'completed' && (
+          <p className="mt-4 text-sm text-emerald-700">
+            Manual release added: {status.file_count} files
+          </p>
+        )}
+        {status?.state === 'failed' && (
+          <p className="mt-4 text-sm text-rose-700">{status.message ?? 'Manual import failed'}</p>
+        )}
+        {error && <p className="mt-4 text-sm text-rose-700">{error}</p>}
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            className="hover-action rounded-md px-3 py-2 text-sm"
+            onClick={onClose}
+          >
+            {status ? 'Close' : 'Cancel'}
+          </button>
+          {!status && (
+            <button
+              type="button"
+              disabled={!files.length}
+              className="cursor-pointer rounded-md bg-violet-700 px-3 py-2 text-sm font-medium text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => void submit()}
+            >
+              Upload files
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export const shouldAutoFindReleases = ({
   canFindReleases,
@@ -417,7 +590,7 @@ const AvailableFiles = ({
                   </p>
                   {canDeleteReleases && (
                     <div className="ml-auto flex gap-2">
-                      {files[0].import_activity_id && (
+                      {files[0].import_activity_id && !files[0].is_manual_upload && (
                         <button
                           type="button"
                           className="hover-action rounded-md px-2 py-1 text-xs font-medium text-violet-700 dark:text-violet-300"
@@ -439,7 +612,7 @@ const AvailableFiles = ({
                 <p className="mt-1 text-xs text-gray-500">
                   {files.length} file{files.length === 1 ? '' : 's'} in this release · Grabbed{' '}
                   {dateLabel(files[0].downloaded_at)}
-                  {files[0].protocol && ` · ${files[0].protocol}`}
+                  {!files[0].is_manual_upload && files[0].protocol && ` · ${files[0].protocol}`}
                 </p>
                 {files.map((file) => (
                   <div key={file.history_id} className="flex items-center gap-3 pt-3 text-sm">
@@ -971,6 +1144,7 @@ export const BookDetailPage = ({
   const [reviewOpenedFromInbox, setReviewOpenedFromInbox] = useState(false);
   const [sourceReviewActivityId, setSourceReviewActivityId] = useState<number | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [manualUploadOpen, setManualUploadOpen] = useState(false);
   const needsReview = useNeedsReviewBooks(isAdmin);
   const firstAddIntent = hasAutoFindReleasesIntent(location.state);
   const libraryUrl = `/library${location.search}`;
@@ -1192,6 +1366,15 @@ export const BookDetailPage = ({
               Delete book
             </button>
           )}
+          {book.manual_upload && (
+            <button
+              type="button"
+              className="hover-action self-end rounded-md px-2 py-1 text-sm font-medium text-violet-700 dark:text-violet-300"
+              onClick={() => setManualUploadOpen(true)}
+            >
+              Upload files
+            </button>
+          )}
         </div>
       </header>
       {book.metadata_json?.display_fields?.length ? (
@@ -1288,6 +1471,19 @@ export const BookDetailPage = ({
             }
             await onLibraryChanged?.();
             await navigate(libraryUrl);
+          }}
+        />
+      )}
+      {manualUploadOpen && book.manual_upload && (
+        <ManualUploadDialog
+          bookId={book.book_id}
+          capability={book.manual_upload}
+          socket={socket}
+          onClose={() => setManualUploadOpen(false)}
+          onComplete={async (fileCount) => {
+            await load();
+            onShowToast(`Manual release added: ${fileCount} files`, 'success');
+            setManualUploadOpen(false);
           }}
         />
       )}

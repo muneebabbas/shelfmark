@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 
 from flask import Flask, Response, jsonify, request, send_file, session
 
+from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.naming import sanitize_filename
 from shelfmark.core.request_helpers import (
@@ -259,9 +260,18 @@ def _serialize_book_detail(
                 "size": f.get("size"),
                 "indexer_display_name": f.get("source_display_name") or f.get("source"),
                 "protocol": f.get("content_type"),
+                "is_manual_upload": f.get("source") == "manual",
                 "downloaded_at": f.get("terminal_at"),
-                "download_path": f.get("download_path"),
-                "torrent_path": _torrent_path(f.get("download_path"), relative_paths_by_output),
+                "download_path": (
+                    Path(str(f.get("download_path") or "")).name
+                    if f.get("source") == "manual"
+                    else f.get("download_path")
+                ),
+                "torrent_path": (
+                    None
+                    if f.get("source") == "manual"
+                    else _torrent_path(f.get("download_path"), relative_paths_by_output)
+                ),
                 "downloadable_by_me": int(f["id"]) in downloadable_history_ids,
                 **(
                     {"derived_epub": derived_epub_by_history_id[int(f["id"])]}
@@ -608,6 +618,29 @@ def register_library_routes(
         detail["in_my_library"] = library_service.is_in_library(
             user_id=actor.db_user_id, book_id=book_id
         )
+        if actor.is_admin:
+            from shelfmark.download.postprocess.scan import get_supported_formats
+
+            configured = app_config.get("SUPPORTED_FORMATS", get_supported_formats())
+            enabled_formats = (
+                sorted({str(value).strip().lower() for value in configured if str(value).strip()})
+                if isinstance(configured, list)
+                else get_supported_formats()
+            )
+            try:
+                max_total_bytes = max(
+                    1, int(str(app_config.get("MANUAL_UPLOAD_MAX_TOTAL_BYTES", 1024 * 1024 * 1024)))
+                )
+                max_file_count = max(
+                    1, int(str(app_config.get("MANUAL_UPLOAD_MAX_FILE_COUNT", 50)))
+                )
+            except TypeError, ValueError:
+                max_total_bytes, max_file_count = 1024 * 1024 * 1024, 50
+            detail["manual_upload"] = {
+                "enabled_formats": enabled_formats,
+                "max_total_bytes": max_total_bytes,
+                "max_file_count": max_file_count,
+            }
         return jsonify(detail)
 
     @app.route("/api/library/books/<int:book_id>", methods=["DELETE"])
@@ -732,10 +765,14 @@ def register_library_routes(
             )
         return send_file(
             download_path,
-            download_name=_book_attachment_name(
-                book=book,
-                book_id=book_id,
-                download_path=download_path,
+            download_name=(
+                Path(download_path).name
+                if target.get("source") == "manual"
+                else _book_attachment_name(
+                    book=book,
+                    book_id=book_id,
+                    download_path=download_path,
+                )
             ),
             as_attachment=True,
         )
@@ -1028,6 +1065,8 @@ def register_library_routes(
             return jsonify({"error": "Internal server error"}), 500
         if activity is None or activity["state"] not in {"completed", "needs review"}:
             return _error_response(action=action, status_code=404, error="Source release not found")
+        if activity["source_release"]["source"] == "manual":
+            return _error_response(action=action, status_code=404, error="Source release not found")
         source_root = normalize_optional_text(activity["source_release"].get("source_root"))
         if source_root is None:
             return _error_response(
@@ -1103,6 +1142,10 @@ def register_library_routes(
                 activity_id=activity_id, book_id=book_id
             )
             if original is None or original["state"] not in {"completed", "needs review"}:
+                return _error_response(
+                    action=action, status_code=404, error="Source release not found"
+                )
+            if original["source_release"]["source"] == "manual":
                 return _error_response(
                     action=action, status_code=404, error="Source release not found"
                 )

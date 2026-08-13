@@ -26,7 +26,7 @@ class WebSocketManager:
         self._connection_count = 0
         self._connection_lock = threading.Lock()
         self._user_rooms: dict[str, int] = {}  # room_name -> ref count
-        self._sid_rooms: dict[str, str] = {}  # sid -> room_name
+        self._sid_rooms: dict[str, set[str]] = {}  # sid -> room names
         self._rooms_lock = threading.Lock()
         self._queue_status_fn: Callable | None = None  # Reference to queue_status()
 
@@ -75,20 +75,21 @@ class WebSocketManager:
         else:
             self._user_rooms[room] = count
 
-    def _set_sid_room_locked(self, sid: str, room: str | None) -> None:
-        current_room = self._sid_rooms.get(sid)
-        if current_room == room:
+    def _set_sid_rooms_locked(self, sid: str, rooms: set[str]) -> None:
+        current_rooms = self._sid_rooms.get(sid, set())
+        if current_rooms == rooms:
             return
 
-        if current_room is not None:
-            leave_room(current_room, sid=sid)
-            if current_room.startswith("user_"):
-                self._decrement_user_room_locked(current_room)
+        for room in current_rooms - rooms:
+            leave_room(room, sid=sid)
+            if room.startswith("user_"):
+                self._decrement_user_room_locked(room)
+        if not rooms:
             self._sid_rooms.pop(sid, None)
-
-        if room is not None:
+        else:
+            self._sid_rooms[sid] = rooms
+        for room in rooms - current_rooms:
             join_room(room, sid=sid)
-            self._sid_rooms[sid] = room
             if room.startswith("user_"):
                 self._increment_user_room_locked(room)
 
@@ -98,15 +99,15 @@ class WebSocketManager:
         is_admin: bool,
         db_user_id: int | None = None,
     ) -> None:
-        """Ensure a SID is in exactly one room matching the current session scope."""
-        room: str | None = None
+        """Ensure a SID belongs to its role room and private authenticated room."""
+        rooms: set[str] = set()
         if is_admin:
-            room = "admins"
-        elif db_user_id is not None:
-            room = f"user_{db_user_id}"
+            rooms.add("admins")
+        if db_user_id is not None:
+            rooms.add(f"user_{db_user_id}")
 
         with self._rooms_lock:
-            self._set_sid_room_locked(sid, room)
+            self._set_sid_rooms_locked(sid, rooms)
 
     def join_user_room(
         self,
@@ -127,7 +128,7 @@ class WebSocketManager:
         """Leave whichever room the SID currently belongs to."""
         del is_admin, db_user_id  # Backward-compatible signature; routing is SID-based.
         with self._rooms_lock:
-            self._set_sid_room_locked(sid, None)
+            self._set_sid_rooms_locked(sid, set())
 
     def broadcast_status_update(self, status_data: dict[str, Any]) -> None:
         """Broadcast status update to all connected clients, filtered by user room."""

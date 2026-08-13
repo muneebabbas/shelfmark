@@ -25,7 +25,7 @@ def is_torrent_source(source_path: Path, task: DownloadTask) -> bool:
 
 
 def transfer_selected_source_members(
-    selections: list[tuple[Path, Path]], *, use_hardlink: bool
+    selections: list[tuple[Path, Path]], *, use_hardlink: bool, exact_copy: bool = False
 ) -> tuple[list[Path], str | None, dict[str, int]]:
     """Copy or link explicitly selected source members to their planned paths."""
     if not selections:
@@ -51,7 +51,7 @@ def transfer_selected_source_members(
             final_path = atomic_hardlink(source, destination)
             op = "hardlink"
         else:
-            final_path = atomic_copy(source, destination)
+            final_path = atomic_copy(source, destination, max_attempts=1 if exact_copy else 100)
             op = "copy"
         final_paths.append(final_path)
         op_counts[op] += 1

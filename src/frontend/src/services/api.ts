@@ -3,6 +3,7 @@ import type {
   InboxResponse,
   LibraryBooksResponse,
   LibraryPurgePreview,
+  ManualImportStatus,
   ReleaseReviewResponse,
 } from '../library/types';
 import type {
@@ -156,7 +157,7 @@ async function fetchJSON<T>(
   const timeoutId =
     timeoutMs && timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;
   const headers = new Headers(opts.headers);
-  if (!headers.has('Content-Type')) {
+  if (!headers.has('Content-Type') && !(opts.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
   }
 
@@ -491,6 +492,22 @@ export const addLibraryBook = async (
 
 export const getLibraryBook = async (bookId: number): Promise<BookDetailResponse> => {
   return fetchJSON<BookDetailResponse>(`${API.libraryBooks}/${encodeURIComponent(String(bookId))}`);
+};
+
+export const uploadManualLibraryFiles = async (
+  bookId: number,
+  files: File[],
+): Promise<ManualImportStatus> => {
+  const body = new FormData();
+  files.forEach((file) => body.append('files', file));
+  return fetchJSON<ManualImportStatus>(`${API.libraryBooks}/${bookId}/manual-upload`, {
+    method: 'POST',
+    body,
+  });
+};
+
+export const getManualImportStatus = async (activityId: number): Promise<ManualImportStatus> => {
+  return fetchJSON<ManualImportStatus>(`${API_BASE}/library/manual-uploads/${activityId}`);
 };
 
 export const getLibraryBooks = async (

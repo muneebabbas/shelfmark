@@ -92,6 +92,7 @@ class ImportActivityService:
         source_metadata: dict[str, Any],
         task_id: str,
         book_id: int,
+        selected_by_user_id: int | None = None,
     ) -> dict[str, Any]:
         """Create an immutable matching activity, retaining its source independently."""
         if not all(
@@ -123,14 +124,15 @@ class ImportActivityService:
                 cursor = conn.execute(
                     """
                     INSERT INTO import_activities
-                    (task_id, source_release_id, book_id, book_snapshot_json, state, updated_at)
-                    VALUES (?, ?, ?, ?, 'matching', ?)
+                    (task_id, source_release_id, book_id, book_snapshot_json, state, selected_by_user_id, updated_at)
+                    VALUES (?, ?, ?, ?, 'matching', ?, ?)
                     """,
                     (
                         task_id.strip(),
                         source_release["id"],
                         book_id,
                         self._json(dict(book)),
+                        selected_by_user_id,
                         now_utc_iso(),
                     ),
                 )
@@ -260,6 +262,17 @@ class ImportActivityService:
         finally:
             conn.close()
 
+    def get_by_id(self, activity_id: int) -> dict[str, Any] | None:
+        """Return an activity by its durable identity."""
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT id FROM import_activities WHERE id = ?", (activity_id,)
+            ).fetchone()
+            return self._activity(conn, row["id"]) if row is not None else None
+        finally:
+            conn.close()
+
     def get_book_activity(self, *, activity_id: int, book_id: int) -> dict[str, Any] | None:
         """Return one activity only when it remains attached to the requested Book."""
         conn = self._connect()
@@ -269,6 +282,33 @@ class ImportActivityService:
                 (activity_id, book_id),
             ).fetchone()
             return self._activity(conn, row["id"]) if row is not None else None
+        finally:
+            conn.close()
+
+    def get_by_id_for_user(self, *, activity_id: int, user_id: int) -> dict[str, Any] | None:
+        """Return a manual activity only to its initiating administrator."""
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT id FROM import_activities WHERE id = ? AND selected_by_user_id = ?",
+                (activity_id, user_id),
+            ).fetchone()
+            return self._activity(conn, row["id"]) if row is not None else None
+        finally:
+            conn.close()
+
+    def list_importing_manual(self) -> list[dict[str, Any]]:
+        """Return manual activities that were interrupted by a process restart."""
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                """
+                SELECT activity.id FROM import_activities AS activity
+                JOIN source_releases AS source ON source.id = activity.source_release_id
+                WHERE activity.state = 'importing' AND source.source = 'manual'
+                """
+            ).fetchall()
+            return [self._activity(conn, int(row["id"])) for row in rows]
         finally:
             conn.close()
 
