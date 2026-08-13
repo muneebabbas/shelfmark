@@ -1,7 +1,9 @@
 """Tests for internal AZW3-derived EPUB artifacts."""
 
 import sqlite3
+import subprocess
 import zipfile
+from unittest.mock import Mock
 
 from shelfmark.core.derived_artifact_service import DerivedArtifactService
 from shelfmark.core.user_db import UserDB
@@ -132,6 +134,45 @@ def test_validation_rejects_traversal_and_persists_only_a_sanitized_error(tmp_pa
     assert artifact["status"] == "failed"
     assert artifact["error_code"] == "unsafe_archive"
     assert artifact["artifact_path"] is None
+
+
+def test_conversion_logs_converter_output_on_failure(tmp_path, monkeypatch):
+    db_path = tmp_path / "users.db"
+    user_db = UserDB(str(db_path))
+    user_db.initialize()
+    source = tmp_path / "Failed.azw3"
+    source.write_bytes(b"azw3 source")
+    conn = user_db._connect()
+    try:
+        history_id = conn.execute(
+            """INSERT INTO download_history (task_id, source, title, format, final_status,
+            download_path) VALUES (?, ?, ?, ?, ?, ?)""",
+            ("failed", "test", "Failed", "azw3", "complete", str(source)),
+        ).lastrowid
+        conn.commit()
+    finally:
+        conn.close()
+
+    def fake_convert(command, **_kwargs):
+        raise subprocess.CalledProcessError(
+            23,
+            command,
+            output="converter stdout",
+            stderr="converter stderr",
+        )
+
+    warning = Mock()
+    monkeypatch.setattr("shelfmark.core.derived_artifact_service.subprocess.run", fake_convert)
+    monkeypatch.setattr("shelfmark.core.derived_artifact_service.logger.warning", warning)
+
+    DerivedArtifactService(str(db_path)).convert_history_id(history_id)
+
+    failure_log = next(
+        call for call in warning.call_args_list if "conversion failed" in call.args[0].lower()
+    )
+    assert failure_log.args[2] == 23
+    assert failure_log.args[3] == "converter stdout"
+    assert failure_log.args[4] == "converter stderr"
 
 
 def test_cleanup_makes_artifact_unavailable_and_removes_output(tmp_path):

@@ -37,6 +37,7 @@ MAX_OUTPUT_BYTES = 500 * 1024 * 1024
 MAX_EPUB_MEMBERS = 10_000
 MAX_EPUB_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024
 MAX_CONVERTER_MEMORY_BYTES = 2 * 1024 * 1024 * 1024
+MAX_CONVERTER_LOG_CHARS = 16_384
 
 
 class ArtifactValidationError(ValueError):
@@ -129,6 +130,17 @@ def _limit_converter_resources() -> None:
     )
     resource.setrlimit(resource.RLIMIT_AS, (MAX_CONVERTER_MEMORY_BYTES, MAX_CONVERTER_MEMORY_BYTES))
     resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_OUTPUT_BYTES, MAX_OUTPUT_BYTES))
+
+
+def _format_converter_output(output: str | bytes | None) -> str:
+    """Return bounded converter output suitable for a single log record."""
+    if output is None:
+        return "<none>"
+    if isinstance(output, bytes):
+        output = output.decode("utf-8", errors="replace")
+    if len(output) <= MAX_CONVERTER_LOG_CHARS:
+        return output
+    return output[:MAX_CONVERTER_LOG_CHARS] + "... [truncated]"
 
 
 class DerivedArtifactService:
@@ -281,6 +293,7 @@ class DerivedArtifactService:
             environment = {
                 "PATH": "/usr/bin:/bin",
                 "HOME": str(workspace),
+                "QT_QPA_PLATFORM": "offscreen",
                 "http_proxy": "",
                 "https_proxy": "",
                 "ALL_PROXY": "",
@@ -291,8 +304,10 @@ class DerivedArtifactService:
                 check=True,
                 timeout=CONVERSION_TIMEOUT_SECONDS,
                 stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                text=True,
+                errors="replace",
                 env=environment,
                 cwd=str(workspace),
                 preexec_fn=_limit_converter_resources,
@@ -322,12 +337,25 @@ class DerivedArtifactService:
             if cursor.rowcount == 0:
                 # Source cleanup won the race; never leave a late promoted file behind.
                 run_blocking_io(destination.unlink, missing_ok=True)
-        except subprocess.TimeoutExpired:
-            logger.warning("AZW3 conversion timed out for history_id=%s", history_id)
+        except subprocess.TimeoutExpired as exc:
+            logger.warning(
+                "AZW3 conversion timed out for history_id=%s: stdout=%r stderr=%r",
+                history_id,
+                _format_converter_output(exc.stdout),
+                _format_converter_output(exc.stderr),
+                exc_info=True,
+            )
             self._mark_failure(artifact_id, "timeout")
             self._notify_failure(artifact_id, "timeout")
-        except subprocess.CalledProcessError:
-            logger.warning("AZW3 conversion failed for history_id=%s", history_id, exc_info=True)
+        except subprocess.CalledProcessError as exc:
+            logger.warning(
+                "AZW3 conversion failed for history_id=%s: returncode=%s stdout=%r stderr=%r",
+                history_id,
+                exc.returncode,
+                _format_converter_output(exc.stdout),
+                _format_converter_output(exc.stderr),
+                exc_info=True,
+            )
             self._mark_failure(artifact_id, "converter_failed")
             self._notify_failure(artifact_id, "converter_failed")
         except ArtifactValidationError as exc:
