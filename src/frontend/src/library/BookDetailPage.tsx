@@ -207,7 +207,7 @@ const ManualUploadDialog = ({
       aria-modal="true"
       aria-labelledby="manual-upload-title"
     >
-      <div className="w-full max-w-lg rounded-xl bg-(--bg) p-6 shadow-xl">
+      <div className="w-full max-w-2xl rounded-xl border border-(--border-muted) bg-(--bg-soft) p-7 shadow-2xl ring-1 ring-black/10">
         <h2 id="manual-upload-title" className="text-lg font-semibold text-(--text)">
           Upload files
         </h2>
@@ -1483,6 +1483,7 @@ export const BookDetailPage = ({
           onComplete={async (fileCount) => {
             await load();
             onShowToast(`Manual release added: ${fileCount} files`, 'success');
+            setManualUploadOpen(false);
           }}
         />
       )}
